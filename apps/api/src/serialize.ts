@@ -170,12 +170,19 @@ export function toGrant(g: GrantRow): Grant {
   };
 }
 
+function metaString(meta: unknown, key: string): string | null {
+  const v = meta && typeof meta === 'object' ? (meta as Record<string, unknown>)[key] : undefined;
+  return typeof v === 'string' ? v : null;
+}
+
 export function toAccessRequest(r: AccessRequestRow): AccessRequest {
   return {
     id: r.id,
     kind: r.kind as AccessRequest['kind'],
     principal: r.principal,
     clientName: r.clientName,
+    // Only this field of meta leaves the server; the rest (poll token hash, PKCE) stays.
+    redirectHost: r.kind === 'mcp_connect' ? metaString(r.meta, 'redirectHost') : null,
     accountId: r.accountId,
     provider: r.provider,
     resource: r.resource,

@@ -3,7 +3,7 @@
  * `all` runs every worker in one process for local dev.
  */
 import { closeDb } from '@hub/db';
-import { closeQueues, createLogger } from '@hub/server';
+import { closeQueues, createLogger, env } from '@hub/server';
 import type { Closable } from './types';
 
 const ROLES = {
@@ -16,6 +16,8 @@ const ROLES = {
 } as const;
 type Role = keyof typeof ROLES;
 
+// Load and validate the repo-root .env before anything reads process.env (e.g. getDb()).
+env();
 const log = createLogger('workers');
 const arg = process.argv[2] ?? 'all';
 const roles: Role[] = arg === 'all' ? (Object.keys(ROLES) as Role[]) : [arg as Role];

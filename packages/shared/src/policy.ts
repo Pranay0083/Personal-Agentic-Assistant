@@ -74,6 +74,8 @@ export const AccessRequest = z.object({
   kind: AccessRequestKind,
   principal: z.string(),
   clientName: z.string().nullable(),
+  /** For `mcp_connect`: where the client will receive the code. The name is self-reported; this is not. */
+  redirectHost: z.string().nullable(),
   accountId: z.uuid().nullable(),
   provider: z.string().nullable(),
   resource: z.string(),
