@@ -79,6 +79,7 @@ export const UpdateAccountReq = z
   })
   .partial();
 // POST /accounts/:id/apply-settings-to-provider -> { updated: number }  ("Use these settings for my other Google accounts")
+// POST /accounts/:id/write-access -> { url }  (separate consent for send scope; only the executor uses it)
 // POST /accounts/:id/sync -> 202
 // DELETE /accounts/:id -> 204  (revokes tokens, deletes items)
 
