@@ -71,6 +71,9 @@ describe('resolveDueDate', () => {
     ['next week works', '2026-10-05', null],
     ['by Fri.', '2026-10-02', null],
     ['by end of month', '2026-09-30', null],
+    ["I'll get you the signed MSA by end of day Wednesday.", '2026-09-30', '17:00'],
+    ['by EOD tomorrow', '2026-09-29', '17:00'],
+    ['by end of day', '2026-09-28', '17:00'],
   ];
   it.each(cases)('%s', (text, date, time) => {
     const r = resolveDueDate(text, REF);

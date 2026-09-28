@@ -93,7 +93,7 @@ export function promiseSentences(body: string): string[] {
 }
 
 const DUE_TAIL_RE =
-  /\s*[,-]?\s*\b(?:by|before|on|until|till|no later than|due|for)\s+(?:the\s+)?(?:end of (?:the |this )?(?:day|week|month)|today|tonight|tomorrow|eod|cob|eow|eom|this \w+|next \w+|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tues?|wed|thu(?:rs?)?|fri|sat|sun|[a-z]{3,9}\.? \d{1,2}(?:st|nd|rd|th)?|\d{1,2}\/\d{1,2}|\d{4}-\d{2}-\d{2}|noon|\d{1,2}(?::\d{2})?\s*(?:am|pm))(?:\s+(?:eod|cob|at \d{1,2}(?::\d{2})?\s*(?:am|pm)?|\d{1,2}(?::\d{2})?\s*(?:am|pm)))?/gi;
+  /\s*[,-]?\s*\b(?:by|before|on|until|till|no later than|due|for)\s+(?:the\s+)?(?:end of (?:the |this )?(?:day|week|month)|today|tonight|tomorrow|eod|cob|eow|eom|this \w+|next \w+|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tues?|wed|thu(?:rs?)?|fri|sat|sun|[a-z]{3,9}\.? \d{1,2}(?:st|nd|rd|th)?|\d{1,2}\/\d{1,2}|\d{4}-\d{2}-\d{2}|noon|\d{1,2}(?::\d{2})?\s*(?:am|pm))(?:\s+(?:eod|cob|(?:on\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow)|at \d{1,2}(?::\d{2})?\s*(?:am|pm)?|\d{1,2}(?::\d{2})?\s*(?:am|pm)))?/gi;
 
 /** "Hi Meera, can you send the Q3 deck by Thursday?" → "send the Q3 deck". */
 export function actionPhrase(sentence: string): string {
@@ -153,7 +153,16 @@ export function dueFor(sentence: string, whole: string, ref: string | null): Res
 /** The object of an action: "send the Q3 deck" → "the Q3 deck". */
 export function objectOf(action: string): string {
   const m = /^\w+\s+(.+?)(?:\s+to\s+\w+)?$/i.exec(action.trim());
-  return (m?.[1] ?? action).trim();
+  return (
+    (m?.[1] ?? action)
+      .trim()
+      // "Send Meera the board pack" -> "the board pack" (drop the indirect object).
+      .replace(
+        /^(?:me|you|him|her|them|us|[A-Z][\w'-]*)\s+(?=(?:the|a|an|my|your|our|their|this|that|those|these)\b)/i,
+        '',
+      )
+      .trim()
+  );
 }
 
 export function stripSubject(subject: string): string {

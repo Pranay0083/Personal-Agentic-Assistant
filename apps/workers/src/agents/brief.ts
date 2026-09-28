@@ -63,6 +63,7 @@ export async function runBrief(
       itemAccountId: items.accountId,
       author: items.author,
       authorAddress: items.authorAddress,
+      labels: items.labels,
     })
     .from(tasks)
     .leftJoin(items, eq(tasks.sourceItemId, items.id))
@@ -125,7 +126,11 @@ export async function runBrief(
         title: t.title,
         due: dueDate ? relativeDayLabel(dueDate, today) : null,
         overdue: !!t.dueAt && t.dueAt < now,
-        from: t.author || t.authorAddress ? firstNameOf(t.author, t.authorAddress) : null,
+        // Tasks from mail the user sent are their own promises, not someone else's ask.
+        from:
+          !sentByUser(t.labels) && (t.author || t.authorAddress)
+            ? firstNameOf(t.author, t.authorAddress)
+            : null,
         project: t.project,
       };
     }),
@@ -195,4 +200,8 @@ export async function runBrief(
   };
   await deps.enqueue(QUEUES.notifier, job, { jobId: jobId('notify', 'brief', userId, date) });
   return { status: 'created', briefId };
+}
+
+function sentByUser(labels: unknown): boolean {
+  return Array.isArray(labels) && labels.includes('SENT');
 }

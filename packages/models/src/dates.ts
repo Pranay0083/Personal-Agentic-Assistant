@@ -229,7 +229,10 @@ function findDates(text: string, ref: string): Candidate[] {
     monthDay(ref, Number(m[1]) - 1, Number(m[2])),
   );
   add(
-    new RegExp(`${PREP}\\b(today|tonight|eod|end of (?:the )?day|cob|close of business)\\b`),
+    // "end of day Wednesday": EOD is the time, not the date, so let the weekday rule win.
+    new RegExp(
+      `${PREP}\\b(today|tonight|eod|end of (?:the )?day|cob|close of business)\\b(?!\\s+(?:on\\s+)?(?:this\\s+|next\\s+)?(?:${WEEKDAY_FULL_RE}|tomorrow|tmrw)\\b)`,
+    ),
     () => ref,
   );
   add(new RegExp(`${PREP}\\b(tomorrow|tmrw|tmr)\\b`), () => addDays(ref, 1));

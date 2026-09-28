@@ -50,9 +50,11 @@ if (!store.mailbox(to)) {
   process.exit(1);
 }
 
+// Accept both `--from addr` and `--from "Name <addr>"`.
+const fromMatch = /^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/.exec(values.from!);
 const { message, historyId } = store.appendMessage(to, {
-  from: values.from!,
-  fromName: values['from-name']!,
+  from: fromMatch ? fromMatch[2]!.trim() : values.from!,
+  fromName: fromMatch?.[1] ? fromMatch[1].trim() : values['from-name']!,
   subject: values.subject!,
   body: values.body!,
   ...(values.html ? { html: values.html } : {}),

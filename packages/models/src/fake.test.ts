@@ -107,6 +107,36 @@ describe('FakeProvider', () => {
     ]);
   });
 
+  it('drops indirect objects and keeps own promises unattributed in the brief', async () => {
+    const data = fenceUntrusted(
+      JSON.stringify({
+        tasks: [
+          { title: 'Send Meera the board pack', due: 'Wednesday', from: 'Meera', overdue: false },
+          { title: 'Get Morgan the signed MSA', due: 'Wednesday', from: null, overdue: false },
+        ],
+      }),
+      'brief-data',
+    );
+    const { json } = await run('brief', data);
+    expect(json.headline).toBe('Two things matter today. The board pack is the big one.');
+    expect(json.bullets).toEqual([
+      'Meera needs the board pack by Wednesday. Not started yet.',
+      'Get Morgan the signed MSA by Wednesday.',
+    ]);
+  });
+
+  it('strips "by end of day <weekday>" from promise titles', async () => {
+    const { json } = await run(
+      'extractor',
+      email('Me <me@acme.com>', 'Re: MSA', "I'll get you the signed MSA by end of day Wednesday."),
+      'Mode: promises',
+    );
+    const tasks = json.tasks as { title: string; due: string; dueTime: string }[];
+    expect(tasks[0]!.title).not.toMatch(/wednesday/i);
+    expect(tasks[0]!.due).toBe('2026-09-30');
+    expect(tasks[0]!.dueTime).toBe('17:00');
+  });
+
   it('answers free-form questions with text', async () => {
     const res = await new FakeProvider().generate({
       model: 'x',
