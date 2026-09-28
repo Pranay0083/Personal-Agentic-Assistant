@@ -12,7 +12,12 @@ import {
 } from '@hub/connectors';
 import { can, parsePrincipal } from '@hub/policy';
 import { errorInfo, type Logger } from '@hub/server';
-import { AccountFilters, GmailSendPayload, type ActionResource } from '@hub/shared';
+import {
+  AccountFilters,
+  PROPOSAL_PAYLOADS,
+  type ActionResource,
+  type ProposalAction,
+} from '@hub/shared';
 import type { LiveEvent } from '@hub/shared/queues';
 
 /**
@@ -35,7 +40,7 @@ import type { LiveEvent } from '@hub/shared/queues';
 export type ExecutorDeps = {
   db: Db;
   secrets: {
-    get(ref: string, expected?: { userId?: string }): Promise<string>;
+    get(ref: string, expected?: { userId?: string; kind?: string }): Promise<string>;
     replace(ref: string, value: string): Promise<void>;
   };
   /** Connector registry lookup; may throw for unsupported providers. */
@@ -59,21 +64,38 @@ export type ExecOutcome =
   | { status: 'denied'; reason: string };
 
 /** Policy resource each write action needs. */
-export const ACTION_RESOURCE: Record<string, ActionResource> = {
+export const ACTION_RESOURCE: Record<ProposalAction, ActionResource> = {
   'gmail.send': 'message.send',
+  'outlook.send': 'message.send',
   'slack.post': 'message.send',
   'gmail.label': 'email.label',
   'jira.transition': 'ticket.update',
+  'jira.comment': 'ticket.update',
 };
 
 export function resourceForAction(action: string): ActionResource | null {
-  return ACTION_RESOURCE[action] ?? null;
+  return (ACTION_RESOURCE as Record<string, ActionResource>)[action] ?? null;
 }
 
-/** Payload schemas the executor re-validates against right before executing. */
-export const PAYLOAD_SCHEMAS: Record<string, z.ZodType<Record<string, unknown>>> = {
-  'gmail.send': GmailSendPayload,
+/** Account provider each action runs on (`accounts.provider`). Anything else is refused. */
+export const ACTION_PROVIDER: Record<ProposalAction, string> = {
+  'gmail.send': 'gmail',
+  'gmail.label': 'gmail',
+  'outlook.send': 'microsoft',
+  'slack.post': 'slack',
+  'jira.transition': 'atlassian',
+  'jira.comment': 'atlassian',
 };
+
+/** Payload schemas the executor re-validates against right before executing. */
+export const PAYLOAD_SCHEMAS: Record<
+  string,
+  z.ZodType<Record<string, unknown>>
+> = PROPOSAL_PAYLOADS;
+
+/** Secret kinds of an account's tokens (the API stores them this way at consent). */
+export const readTokenKind = (provider: string) => `oauth:${provider}`;
+export const writeTokenKind = (provider: string) => `oauth:${provider}:write`;
 
 const EXECUTOR = 'system:executor';
 const LOCK_NAMESPACE = 7_310_001;
@@ -302,8 +324,12 @@ async function run(
         };
       }
       // needsApproval is satisfied: only approved proposals reach this point.
+      const provider = (ACTION_PROVIDER as Record<string, string>)[proposal.action];
+      if (provider !== account.provider) {
+        throw new PermanentFailure(`${proposal.action} needs a ${provider ?? 'matching'} account`);
+      }
 
-      // 2. Payload, re-validated. Recipients come only from here.
+      // 2. Payload, re-validated. Recipients and targets come only from here.
       const schema = PAYLOAD_SCHEMAS[proposal.action];
       if (!schema) throw new PermanentFailure(`no payload schema for ${proposal.action}`);
       const parsed = schema.safeParse(proposal.payload);
@@ -323,19 +349,26 @@ async function run(
         throw new PermanentFailure(`${account.provider} cannot execute ${proposal.action}`);
       const execute = connector.execute.bind(connector);
 
-      const makeCtx = async (ref: string): Promise<ConnectorContext> => ({
+      // Tokens are opened with the kind they must have, so a read token (or another
+      // provider's token) swapped into writeTokenRef is refused rather than used.
+      const makeCtx = async (ref: string, kind: string): Promise<ConnectorContext> => ({
         accountId: account.id,
         externalId: account.externalId,
-        tokens: parseTokens(await deps.secrets.get(ref, { userId })),
+        tokens: parseTokens(await deps.secrets.get(ref, { userId, kind })),
         saveTokens: (tokens) => deps.secrets.replace(ref, JSON.stringify(tokens)),
-        cursor: account.syncCursor,
+        // Writes don't sync, so no cursor. Meta carries provider identity (e.g. Atlassian site).
+        cursor: null,
         filters: AccountFilters.parse(account.filters ?? {}),
+        meta: (account.meta ?? {}) as Record<string, unknown>,
       });
 
       if (connector.findExecuted) {
         const find = connector.findExecuted.bind(connector);
         // Gmail's send scope cannot search the mailbox, so the lookup uses the read token.
         const lookupRef = account.tokenRef ?? writeTokenRef;
+        const lookupKind = account.tokenRef
+          ? readTokenKind(account.provider)
+          : writeTokenKind(account.provider);
         let lookupCtx: ConnectorContext | undefined;
         /**
          * Looks for an earlier send, once plus once after each wait. With waits, a lookup
@@ -345,8 +378,13 @@ async function run(
           for (let i = 0; i <= waits.length; i++) {
             if (i > 0) await sleep(waits[i - 1]!);
             try {
-              lookupCtx ??= await makeCtx(lookupRef);
-              const found = await find(lookupCtx, proposal.action, proposal.idempotencyKey);
+              lookupCtx ??= await makeCtx(lookupRef, lookupKind);
+              const found = await find(
+                lookupCtx,
+                proposal.action,
+                proposal.idempotencyKey,
+                proposal.payload as Record<string, unknown>,
+              );
               if (found) return found;
             } catch (err) {
               if (waits.length === 0) throw err;
@@ -376,7 +414,7 @@ async function run(
       await audit(db, { userId, principal: EXECUTOR, action: 'executor.sending', target });
       sendAttempted = true;
       const result = await execute(
-        await makeCtx(writeTokenRef),
+        await makeCtx(writeTokenRef, writeTokenKind(account.provider)),
         proposal.action,
         payload,
         proposal.idempotencyKey,

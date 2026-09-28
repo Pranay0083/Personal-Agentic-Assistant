@@ -8,8 +8,9 @@ import {
   OpenAICompatibleProvider,
   type OpenAICompatibleKind,
 } from './openai';
-import { BedrockProvider, VertexProvider } from './unconfigured';
+import { BedrockProvider } from './bedrock';
 import { productionDefault } from './env';
+import { VertexProvider } from './vertex';
 
 export {
   AnthropicProvider,
@@ -19,7 +20,17 @@ export {
 } from './anthropic';
 export { OpenAICompatibleProvider, OPENAI_COMPATIBLE_KINDS, type OpenAIClientLike } from './openai';
 export { FakeProvider } from './fake';
-export { BedrockProvider, VertexProvider } from './unconfigured';
+export {
+  BedrockProvider,
+  assertBedrockRegion,
+  bedrockClientOptions,
+  parseBedrockSecret,
+  type BedrockCredentials,
+  type BedrockOptions,
+} from './bedrock';
+export { VertexProvider, vertexBaseUrl, vertexClientOptions, type VertexOptions } from './vertex';
+export { ServiceAccountAuth, parseServiceAccount, GOOGLE_TOKEN_URL } from './google-auth';
+export { baseClaudeModel, bedrockModelId, vertexModelId } from './model-ids';
 export {
   assertPublicBaseUrl,
   isBlockedAddress,
@@ -34,12 +45,39 @@ export const DEV_ONLY_PROVIDER_KINDS: readonly ModelProviderKind[] = ['fake'];
 
 export type ProviderSpec = {
   kind: ModelProviderKind;
-  /** Decrypted API key. Lives only for the duration of one call; never log it. */
+  /**
+   * Decrypted provider secret: an API key, or for Bedrock/Vertex a JSON credential (AWS
+   * keys / service account key). Lives only for the duration of one call; never log it.
+   */
   apiKey?: string;
   /** Non-secret config from `providers.config` (baseUrl, region, apiVersion, projectId). */
   config: Record<string, string>;
   /** Production rules (no fake kinds, https public baseUrl only). Default: NODE_ENV. */
   production?: boolean;
+  /**
+   * Bedrock/Vertex without a secret: use the hub process's own cloud credentials (AWS
+   * chain, Google ADC). That is the operator's identity, so default: outside production.
+   */
+  allowAmbientCredentials?: boolean;
+};
+
+/**
+ * Model ids offered for providers of each kind, in addition to the ones a user types into
+ * `config.models`. Claude on Bedrock uses `anthropic.`-prefixed ids; Vertex uses bare ids.
+ */
+export const PROVIDER_MODEL_SUGGESTIONS: Partial<
+  Record<ModelProviderKind, { model: string; label: string }[]>
+> = {
+  bedrock: [
+    { model: 'anthropic.claude-haiku-4-5', label: 'Claude Haiku 4.5 (Bedrock)' },
+    { model: 'anthropic.claude-sonnet-5', label: 'Claude Sonnet 5 (Bedrock)' },
+    { model: 'anthropic.claude-opus-5-5', label: 'Claude Opus 5.5 (Bedrock)' },
+  ],
+  vertex: [
+    { model: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 (Vertex AI)' },
+    { model: 'claude-sonnet-5', label: 'Claude Sonnet 5 (Vertex AI)' },
+    { model: 'claude-opus-5-5', label: 'Claude Opus 5.5 (Vertex AI)' },
+  ],
 };
 
 export type ProviderFactory = (spec: ProviderSpec) => ModelProvider;
@@ -67,9 +105,26 @@ export const defaultProviderFactory: ProviderFactory = (spec) => {
       production,
     });
   }
-  if (kind === 'bedrock')
-    return new BedrockProvider({ ...(config.region ? { region: config.region } : {}) });
-  if (kind === 'vertex') return new VertexProvider();
+  const allowAmbientCredentials = spec.allowAmbientCredentials ?? !production;
+  if (kind === 'bedrock') {
+    return new BedrockProvider({
+      ...(config.region ? { region: config.region } : {}),
+      ...(config.roleArn ? { roleArn: config.roleArn } : {}),
+      ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
+      ...(apiKey ? { secret: apiKey } : {}),
+      allowAmbientCredentials,
+      production,
+    });
+  }
+  if (kind === 'vertex') {
+    return new VertexProvider({
+      ...(config.region ? { region: config.region } : {}),
+      ...(config.projectId ? { projectId: config.projectId } : {}),
+      ...(apiKey ? { secret: apiKey } : {}),
+      allowAmbientCredentials,
+      production,
+    });
+  }
   if (kind === 'fake') return new FakeProvider();
   throw new ModelConfigError(`unknown model provider ${String(kind)}`);
 };

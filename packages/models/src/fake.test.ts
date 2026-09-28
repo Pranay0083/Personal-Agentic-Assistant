@@ -168,3 +168,104 @@ describe('FakeProvider', () => {
     ).rejects.toThrow('boom');
   });
 });
+
+const item = (kind: string, from: string, subject: string, body: string) =>
+  fenceUntrusted(`From: ${from}\nSubject: ${subject}\n\n${body}`, kind);
+
+describe('FakeProvider: Phase 5 item kinds', () => {
+  it('a Jira issue assigned to you that blocks people (from signals)', async () => {
+    const ticket = item('ticket', 'Arjun', 'PROJ-482 Payment retries failing', 'Retries fail.');
+    const facts =
+      'Source: atlassian ticket\nReference: PROJ-482 (Jira issue)\nSignals: assigned to you, blocking 2 people';
+    const t = await run('triage', ticket, facts);
+    expect(t.json).toMatchObject({
+      bucket: 'needs_you',
+      statusLabel: 'Blocking 2 people',
+      summary: 'Assigned to you. Two teammates are waiting on it.',
+      expectsReply: false,
+    });
+    const e = await run('extractor', ticket, facts);
+    expect((e.json.tasks as { title: string }[])[0]!.title).toBe('Unblock PROJ-482');
+  });
+
+  it('reads the same cues from the text when the connector set no signals', async () => {
+    const ticket = item(
+      'ticket',
+      'Jira',
+      'PROJ-482 Payment retries failing',
+      'Assigned to you. Two teammates are waiting on it.',
+    );
+    const t = await run('triage', ticket);
+    expect(t.json).toMatchObject({ bucket: 'needs_you', statusLabel: 'Blocking 2 people' });
+    const e = await run('extractor', ticket);
+    expect((e.json.tasks as { title: string }[])[0]!.title).toBe('Unblock PROJ-482');
+  });
+
+  it('a pull request review request becomes "Review <repo>#<n>"', async () => {
+    const pr = item('code', 'Dev <dev@acme.com>', 'Fix retry backoff', 'Adds jitter.');
+    const facts = 'Reference: api#231 (pull request)\nSignals: review requested from you';
+    const t = await run('triage', pr, facts);
+    expect(t.json).toMatchObject({
+      bucket: 'needs_you',
+      statusLabel: 'Review requested',
+      summary: 'Dev requested your review on api#231.',
+    });
+    const e = await run('extractor', pr, facts);
+    expect((e.json.tasks as { title: string }[])[0]!.title).toBe('Review api#231');
+  });
+
+  it('status changes on tickets are FYI', async () => {
+    const t = await run('triage', item('ticket', 'Arjun', 'PROJ-470', 'Moved to Done by Arjun.'));
+    expect(t.json).toMatchObject({
+      bucket: 'fyi',
+      statusLabel: 'FYI',
+      summary: 'Moved to Done by Arjun.',
+    });
+  });
+
+  it('calendar events are FYI unless they need an RSVP', async () => {
+    const plain = await run(
+      'triage',
+      item('event', 'Raj <raj@acme.com>', 'Design review', 'Updated: moved to 3pm. Can you join?'),
+    );
+    expect(plain.json).toMatchObject({ bucket: 'fyi', expectsReply: false });
+    const invite = item('event', 'Raj <raj@acme.com>', 'Offsite planning', 'Thu 10:00');
+    const rsvp = await run('triage', invite, 'Signals: RSVP needed');
+    expect(rsvp.json).toMatchObject({
+      bucket: 'needs_you',
+      statusLabel: 'RSVP needed',
+      summary: 'Raj invited you to Offsite planning. RSVP needed.',
+    });
+    const e = await run('extractor', invite, 'Signals: RSVP needed');
+    expect((e.json.tasks as { title: string }[])[0]!.title).toBe('RSVP to Offsite planning');
+  });
+
+  it('direct mentions in chat need you and draft a short chat reply', async () => {
+    const msg = item('chat', 'Priya', '#api', 'Where does the API spec live?');
+    const t = await run('triage', msg, 'Source: slack chat\nSignals: mentions you');
+    expect(t.json).toMatchObject({
+      bucket: 'needs_you',
+      statusLabel: 'Needs reply',
+      expectsReply: true,
+      summary: 'Priya asked: Where does the API spec live?',
+    });
+    const chatter = await run('triage', item('chat', 'Sam', '#random', 'Lunch is here.'));
+    expect(chatter.json).toMatchObject({ bucket: 'fyi', statusLabel: 'FYI' });
+    const r = await run('reply', msg);
+    expect(r.json.body).not.toMatch(/^Hi /);
+    expect(r.json.body).not.toMatch(/\n\nThanks$/);
+  });
+
+  it('notes and files are FYI unless they ask something', async () => {
+    const note = await run(
+      'triage',
+      item('note', 'Dana', 'Q4 plan', 'Updated the roadmap section.'),
+    );
+    expect(note.json).toMatchObject({ bucket: 'fyi', summary: 'Updated the roadmap section.' });
+    const file = await run(
+      'triage',
+      item('file', 'Dana', 'Q3 deck', 'Dana commented: can you review slide 4 by Friday?'),
+    );
+    expect(file.json).toMatchObject({ bucket: 'needs_you', expectsReply: false });
+  });
+});

@@ -115,12 +115,12 @@ beforeEach(async () => {
   userId = u!.id;
   const readRef = await secrets.put(
     userId,
-    'gmail:read',
+    'oauth:gmail',
     JSON.stringify({ accessToken: 'read-token' }),
   );
   const writeRef = await secrets.put(
     userId,
-    'gmail:write',
+    'oauth:gmail:write',
     JSON.stringify({ accessToken: 'write-token' }),
   );
   const [a] = await db
@@ -515,5 +515,196 @@ describe('executor: errors', () => {
     expect(await executeProposal(deps, '00000000-0000-0000-0000-000000000000')).toEqual({
       status: 'missing',
     });
+  });
+});
+
+describe('executor: Phase 5 actions', () => {
+  type Call = { action: string; payload: Record<string, unknown>; key: string; token: string };
+
+  /** A connector for any provider that records every write it performs. */
+  function recorder(provider: string) {
+    const calls: Call[] = [];
+    const connector = {
+      provider,
+      execute: async (
+        ctx: ConnectorContext,
+        action: string,
+        payload: Record<string, unknown>,
+        key: string,
+      ) => {
+        calls.push({ action, payload, key, token: ctx.tokens.accessToken });
+        return { externalId: `${provider}-${calls.length}`, channelId: 'C1', text: 'never stored' };
+      },
+      findExecuted: async () => null,
+    } as unknown as Connector;
+    return { calls, connector };
+  }
+
+  async function accountFor(provider: string, over: { writeKind?: string } = {}) {
+    const readRef = await secrets.put(
+      userId,
+      `oauth:${provider}`,
+      JSON.stringify({ accessToken: `${provider}-read` }),
+    );
+    const writeRef = await secrets.put(
+      userId,
+      over.writeKind ?? `oauth:${provider}:write`,
+      JSON.stringify({ accessToken: `${provider}-write` }),
+    );
+    const [a] = await db
+      .insert(accounts)
+      .values({
+        userId,
+        provider,
+        nickname: provider,
+        color: '#3B5BA9',
+        externalId: `${provider}-${randomBytes(3).toString('hex')}`,
+        status: 'live',
+        tokenRef: readRef,
+        writeTokenRef: writeRef,
+      })
+      .returning();
+    return a!.id;
+  }
+
+  const CASES = [
+    {
+      action: 'outlook.send',
+      provider: 'microsoft',
+      payload: {
+        to: ['priya@contoso.com'],
+        cc: [],
+        subject: 'Re: API spec',
+        body: 'It lives in the wiki.',
+        inReplyTo: 'AAMkAGI2TG93AAA=',
+      },
+      bad: { to: ['not-an-email'], subject: 'x', body: 'y' },
+    },
+    {
+      action: 'slack.post',
+      provider: 'slack',
+      payload: {
+        channel: 'C024BE91L',
+        text: 'It lives in the wiki.',
+        threadTs: '1727500000.000100',
+      },
+      bad: { text: 'no channel' },
+    },
+    {
+      action: 'jira.transition',
+      provider: 'atlassian',
+      payload: { issueKey: 'PROJ-482', transitionId: '31', toStatus: 'In Progress' },
+      bad: { issueKey: 'proj-482', transitionId: '31', toStatus: 'x' },
+    },
+    {
+      action: 'jira.comment',
+      provider: 'atlassian',
+      payload: { issueKey: 'PROJ-482', body: 'Picking this up today.' },
+      bad: { issueKey: 'PROJ-482', body: '' },
+    },
+  ] as const;
+
+  it.each(CASES)('$action runs once on a $provider account with the stored payload', async (c) => {
+    const acct = await accountFor(c.provider);
+    const rec = recorder(c.provider);
+    const providersAsked: string[] = [];
+    deps.getConnector = (p) => {
+      providersAsked.push(p);
+      return rec.connector;
+    };
+    const p = await proposal({ accountId: acct, action: c.action, payload: c.payload });
+    const out = await executeProposal(deps, p.id);
+    expect(out).toEqual({ status: 'executed', externalId: `${c.provider}-1`, reconciled: false });
+    // Run again (a duplicate job): nothing more is sent.
+    await executeProposal(deps, p.id);
+    expect(rec.calls).toHaveLength(1);
+    expect(rec.calls[0]).toEqual({
+      action: c.action,
+      payload: c.payload,
+      key: p.idempotencyKey,
+      token: `${c.provider}-write`,
+    });
+    expect(providersAsked).toEqual([c.provider]);
+    const row = await load(p.id);
+    expect(row.status).toBe('executed');
+    expect(row.result).toEqual({ externalId: `${c.provider}-1`, channelId: 'C1' }); // ids only
+    expect(await actions(p.id)).toEqual([
+      'executor.start',
+      'executor.sending',
+      'executor.executed',
+    ]);
+  });
+
+  it.each(CASES)('$action with an invalid stored payload fails without sending', async (c) => {
+    const acct = await accountFor(c.provider);
+    const rec = recorder(c.provider);
+    deps.getConnector = () => rec.connector;
+    const p = await proposal({ accountId: acct, action: c.action, payload: c.bad });
+    expect(await executeProposal(deps, p.id)).toEqual({
+      status: 'failed',
+      reason: 'payload failed validation',
+    });
+    expect(rec.calls).toHaveLength(0);
+  });
+
+  it('refuses an action on the wrong provider (slack.post from Gmail, outlook.send from Slack)', async () => {
+    const rec = recorder('slack');
+    deps.getConnector = () => rec.connector;
+    const a = await proposal({ action: 'slack.post', payload: CASES[1].payload });
+    expect(await executeProposal(deps, a.id)).toEqual({
+      status: 'failed',
+      reason: 'slack.post needs a slack account',
+    });
+    const slack = await accountFor('slack');
+    const b = await proposal({
+      accountId: slack,
+      action: 'outlook.send',
+      payload: CASES[0].payload,
+    });
+    expect((await executeProposal(deps, b.id)).status).not.toBe('executed');
+    expect(rec.calls).toHaveLength(0);
+    expect(mail.sent).toHaveLength(0);
+  });
+
+  it('only opens a write token of the account provider kind', async () => {
+    // A Slack account whose write ref points at a Gmail write secret.
+    const acct = await accountFor('slack', { writeKind: 'oauth:gmail:write' });
+    const rec = recorder('slack');
+    deps.getConnector = () => rec.connector;
+    const p = await proposal({ accountId: acct, action: 'slack.post', payload: CASES[1].payload });
+    expect((await executeProposal(deps, p.id)).status).toBe('failed');
+    expect(rec.calls).toHaveLength(0);
+  });
+
+  it('jira actions need ticket.update, re-checked at execution time', async () => {
+    const acct = await accountFor('atlassian');
+    const rec = recorder('atlassian');
+    deps.getConnector = () => rec.connector;
+    await db.insert(policies).values({
+      userId,
+      principal: 'mcp:*',
+      accountId: acct,
+      resource: 'ticket.update',
+      level: 'never',
+    });
+    const p = await proposal({
+      accountId: acct,
+      agent: 'mcp:claude',
+      action: 'jira.comment',
+      payload: CASES[3].payload,
+    });
+    const out = await executeProposal(deps, p.id);
+    expect(out.status).toBe('denied');
+    expect((await load(p.id)).error).toMatch(/never/);
+    expect(rec.calls).toHaveLength(0);
+  });
+
+  it('gmail.label has no payload schema yet and is refused', async () => {
+    const p = await proposal({ action: 'gmail.label', payload: { label: 'x' } });
+    expect(await executeProposal(deps, p.id)).toEqual({
+      status: 'failed',
+      reason: 'no payload schema for gmail.label',
+    });
+    expect(mail.sent).toHaveLength(0);
   });
 });

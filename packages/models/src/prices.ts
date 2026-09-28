@@ -1,4 +1,5 @@
 import type { ModelProviderKind } from '@hub/shared';
+import { baseClaudeModel } from './providers/model-ids';
 import type { Usage } from './types';
 
 /** USD per 1M tokens. First-party list prices; unknown models cost 0 (logged as such). */
@@ -16,9 +17,13 @@ export const PRICES: Record<string, { input: number; output: number }> = {
   'gpt-4o-mini': { input: 0.15, output: 0.6 },
 };
 
-/** Strip provider prefixes (`anthropic/claude-sonnet-5`, `anthropic.claude-...`). */
+/**
+ * Strip provider prefixes and versions (`anthropic/claude-sonnet-5`, `us.anthropic.claude-…`,
+ * `claude-…@20251101`, `openai/gpt-4.1`). Bedrock and Vertex bill at partner rates; the
+ * first-party list price is used as the estimate.
+ */
 function baseModel(model: string): string {
-  return model.replace(/^(anthropic[/.]|openai\/)/, '');
+  return baseClaudeModel(model).replace(/^openai\//, '');
 }
 
 export function priceFor(model: string): { input: number; output: number } | undefined {

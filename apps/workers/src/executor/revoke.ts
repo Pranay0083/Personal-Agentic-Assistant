@@ -3,7 +3,7 @@ import { ReconnectRequiredError, type Connector, type OAuthTokens } from '@hub/c
 import { accounts, audit, secrets as secretsTable, type Db } from '@hub/db';
 import { errorInfo, type Logger } from '@hub/server';
 import type { RevokeWriteTokenJob } from '@hub/shared/queues';
-import { isRetryableError } from './execute';
+import { isRetryableError, writeTokenKind } from './execute';
 
 export type RevokeDeps = {
   db: Db;
@@ -22,7 +22,6 @@ export type RevokeOutcome =
   | { status: 'revoked' | 'deleted'; revoked: boolean };
 
 const EXECUTOR = 'system:executor';
-export const writeTokenKind = (provider: string) => `oauth:${provider}:write`;
 
 function parseTokens(raw: string): OAuthTokens {
   try {

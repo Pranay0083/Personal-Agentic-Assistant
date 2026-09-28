@@ -4,8 +4,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { agentConfigs, modelUsage, providers, users, type Db } from '@hub/db';
 import { createTestDb } from '@hub/db/testing';
 import { LocalKeyProvider, SecretStore } from '@hub/server/secrets';
+import Anthropic from '@anthropic-ai/sdk';
+import type OpenAI from 'openai';
 import { BudgetExceededError, ModelProviderError } from './errors';
+import type { AnthropicClientLike } from './providers/anthropic';
+import { BedrockProvider } from './providers/bedrock';
 import type { ProviderSpec } from './providers/index';
+import { OpenAICompatibleProvider, type OpenAIClientLike } from './providers/openai';
 import { createRouter } from './router';
 import type { GenerateRequest, GenerateResult, ModelProvider } from './types';
 
@@ -230,25 +235,6 @@ describe('createRouter', () => {
     expect(rec.calls).toHaveLength(0);
   });
 
-  it('falls back when a Phase 5 adapter is selected', async () => {
-    const [p] = await db
-      .insert(providers)
-      .values({ userId, kind: 'bedrock', label: 'AWS' })
-      .returning();
-    await db.insert(agentConfigs).values({
-      userId,
-      agent: 'planner',
-      providerId: p!.id,
-      model: 'anthropic.claude-opus-5-5',
-      fallback: true,
-    });
-    const rec = new StubProvider('anthropic', () => ok('anthropic'));
-    const router = createRouter({ db, secrets, recommendedProvider: () => rec, sleep: noSleep });
-    const res = await router.generate(req('planner'));
-    expect(res.fallbackUsed).toBe(true);
-    expect(res.model).toBe('claude-opus-5-5');
-  });
-
   it('enforces the monthly cap with BudgetExceededError', async () => {
     await db
       .update(users)
@@ -302,5 +288,181 @@ describe('createRouter', () => {
       attempts: 1,
     });
     await expect(router.generate({ ...req(), timeoutMs: 10 })).rejects.toThrow(/timed out/);
+  });
+});
+
+describe('Phase 5 acceptance: triage on Groq, planner on Bedrock, clean fallback', () => {
+  const AWS = JSON.stringify({ accessKeyId: 'AKIDEXAMPLE', secretAccessKey: 'aws-secret' });
+
+  /** Real adapters with mocked SDK clients, built the way the router builds them. */
+  function setup(opts: { groqDown?: boolean; bedrockDown?: boolean } = {}) {
+    const groqCreate = vi.fn(async (body: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming) => {
+      if (opts.groqDown) {
+        throw new ModelProviderError('groq: HTTP 503', { status: 503, retryable: true });
+      }
+      return {
+        id: 'c1',
+        object: 'chat.completion',
+        created: 0,
+        model: body.model,
+        choices: [
+          {
+            index: 0,
+            finish_reason: 'stop',
+            logprobs: null,
+            message: { role: 'assistant', content: '{"bucket":"fyi"}', refusal: null },
+          },
+        ],
+        usage: { prompt_tokens: 40, completion_tokens: 5, total_tokens: 45 },
+      } as OpenAI.Chat.ChatCompletion;
+    });
+    const bedrockCreate = vi.fn(async (params: Anthropic.MessageCreateParamsNonStreaming) => {
+      if (opts.bedrockDown) throw new Anthropic.APIConnectionError({ message: 'unreachable' });
+      return {
+        id: 'm1',
+        type: 'message',
+        role: 'assistant',
+        model: params.model,
+        content: [{ type: 'text', text: 'plan', citations: null }],
+        stop_reason: 'end_turn',
+        stop_sequence: null,
+        usage: { input_tokens: 1000, output_tokens: 100 },
+      } as Anthropic.Message;
+    });
+    const specs: ProviderSpec[] = [];
+    const factory = (spec: ProviderSpec) => {
+      specs.push(spec);
+      if (spec.kind === 'groq') {
+        return new OpenAICompatibleProvider({
+          kind: 'groq',
+          ...(spec.apiKey ? { apiKey: spec.apiKey } : {}),
+          client: { chat: { completions: { create: groqCreate } } } as unknown as OpenAIClientLike,
+        });
+      }
+      if (spec.kind === 'bedrock') {
+        return new BedrockProvider({
+          ...(spec.config.region ? { region: spec.config.region } : {}),
+          ...(spec.apiKey ? { secret: spec.apiKey } : {}),
+          client: { messages: { create: bedrockCreate } } as unknown as AnthropicClientLike,
+          production: false,
+        });
+      }
+      throw new Error(`unexpected kind ${spec.kind}`);
+    };
+    const rec = new StubProvider('anthropic', () => ok('anthropic'));
+    const router = createRouter({
+      db,
+      secrets,
+      providerFactory: factory,
+      recommendedProvider: () => rec,
+      sleep: noSleep,
+    });
+    return { router, rec, specs, groqCreate, bedrockCreate };
+  }
+
+  async function configure() {
+    const groqKey = await secrets.put(userId, 'provider:groq', 'gsk-live');
+    const awsKey = await secrets.put(userId, 'provider:bedrock', AWS);
+    const [groq, aws] = await db
+      .insert(providers)
+      .values([
+        { userId, kind: 'groq', label: 'Groq', config: {}, secretRef: groqKey },
+        {
+          userId,
+          kind: 'bedrock',
+          label: 'AWS',
+          config: { region: 'us-east-1' },
+          secretRef: awsKey,
+        },
+      ])
+      .returning();
+    await db.insert(agentConfigs).values([
+      {
+        userId,
+        agent: 'triage',
+        providerId: groq!.id,
+        model: 'llama-3.3-70b-versatile',
+        fallback: true,
+      },
+      { userId, agent: 'planner', providerId: aws!.id, model: 'claude-opus-5-5', fallback: true },
+    ]);
+  }
+
+  it('routes triage to Groq and planning to Bedrock', async () => {
+    await configure();
+    const { router, rec, specs, groqCreate, bedrockCreate } = setup();
+
+    const t1 = await router.generate(req('triage'));
+    expect(t1).toMatchObject({ provider: 'groq', model: 'llama-3.3-70b-versatile' });
+    expect(t1.fallbackUsed).toBe(false);
+    expect(groqCreate).toHaveBeenCalledTimes(1);
+    expect(groqCreate.mock.calls[0]![0].model).toBe('llama-3.3-70b-versatile');
+
+    const p1 = await router.generate(req('planner'));
+    expect(p1).toMatchObject({ provider: 'bedrock', model: 'anthropic.claude-opus-5-5' });
+    expect(p1.fallbackUsed).toBe(false);
+    expect(bedrockCreate.mock.calls[0]![0].model).toBe('anthropic.claude-opus-5-5');
+    expect(p1.costUsd).toBeCloseTo(0.006, 6); // Opus 5.5 list price: $4/M in, $20/M out
+
+    expect(rec.calls).toHaveLength(0);
+    expect(specs.map((s) => [s.kind, s.apiKey, s.config])).toEqual([
+      ['groq', 'gsk-live', {}],
+      ['bedrock', AWS, { region: 'us-east-1' }],
+    ]);
+    const rows = await usageRows();
+    expect(
+      rows.map((r) => [r.agent, r.providerKind, r.model, r.ok, r.fallbackUsed]).sort(),
+    ).toEqual(
+      [
+        ['planner', 'bedrock', 'anthropic.claude-opus-5-5', true, false],
+        ['triage', 'groq', 'llama-3.3-70b-versatile', true, false],
+      ].sort(),
+    );
+  });
+
+  it('falls back to the recommended model when Bedrock is down, and logs both legs', async () => {
+    await configure();
+    const { router, rec, bedrockCreate } = setup({ bedrockDown: true });
+    const res = await router.generate(req('planner'));
+    expect(bedrockCreate).toHaveBeenCalledTimes(3); // connection errors are retried first
+    expect(res).toMatchObject({ provider: 'anthropic', model: 'claude-opus-5-5' });
+    expect(res.fallbackUsed).toBe(true);
+    expect(rec.calls[0]!.model).toBe('claude-opus-5-5');
+    const rows = await usageRows();
+    expect(rows.map((r) => [r.providerKind, r.model, r.ok, r.fallbackUsed]).sort()).toEqual(
+      [
+        ['anthropic', 'claude-opus-5-5', true, true],
+        ['bedrock', 'claude-opus-5-5', false, false],
+      ].sort(),
+    );
+  });
+
+  it('falls back when Groq is down, and when the Bedrock config is broken', async () => {
+    await configure();
+    const down = setup({ groqDown: true });
+    const t1 = await down.router.generate(req('triage'));
+    expect(t1).toMatchObject({
+      provider: 'anthropic',
+      model: 'claude-haiku-4-5',
+      fallbackUsed: true,
+    });
+
+    // A config error (bad region) fails before any request and falls back the same way.
+    await db
+      .update(providers)
+      .set({ config: { region: 'not a region' } })
+      .where(eq(providers.kind, 'bedrock'));
+    const broken = setup();
+    const p1 = await broken.router.generate(req('planner'));
+    expect(broken.bedrockCreate).not.toHaveBeenCalled();
+    expect(p1).toMatchObject({ provider: 'anthropic', fallbackUsed: true });
+    const rows = await usageRows();
+    expect(rows.filter((r) => r.fallbackUsed && r.ok)).toHaveLength(2);
+    expect(
+      rows
+        .filter((r) => !r.ok)
+        .map((r) => r.providerKind)
+        .sort(),
+    ).toEqual(['bedrock', 'groq']);
   });
 });

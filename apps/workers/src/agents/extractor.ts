@@ -16,12 +16,16 @@ import {
   fenceItem,
   isFromMe,
   itemContent,
+  itemFacts,
+  itemRef,
   jobId,
   loadItemContext,
   referenceLines,
   resourceForKind,
+  signalsOf,
   type AgentDeps,
   type AgentOutcome,
+  type ItemContext,
 } from './context';
 import { PUSH_TEXT } from '../notifier/text';
 import { EXTRACTOR_SYSTEM, ExtractorOutput, PROMISES_ADDENDUM } from './prompts';
@@ -62,6 +66,28 @@ export function resolveDueAt(
   return zonedTimeToUtc(due, dueTime ?? DEFAULT_DUE_TIME, timezone);
 }
 
+/**
+ * The task a trusted provider signal implies, if any: a requested review ("Review
+ * api#231"), an assignment ("Unblock PROJ-482" when it blocks people, else
+ * "PROJ-482: <title>") or a pending RSVP. Built from connector labels and the item title
+ * only, so no model call is needed and the title is the same on every run.
+ */
+export function signalTask(ctx: ItemContext): string | null {
+  const s = signalsOf(ctx.item);
+  const ref = itemRef(ctx.item)?.ref;
+  const title = (ctx.item.title ?? '').replace(/\s+/g, ' ').trim();
+  if ((ctx.item.kind === 'ticket' || ctx.item.kind === 'code') && ref) {
+    if (s.reviewRequested) return `Review ${ref}`;
+    if (s.assigned) {
+      if (s.blocking) return `Unblock ${ref}`;
+      const rest = title.replace(ref, '').replace(/^[\s:·-]+/, '');
+      return rest ? `${ref}: ${rest}`.slice(0, 120) : `Work on ${ref}`;
+    }
+  }
+  if (ctx.item.kind === 'event' && s.rsvpNeeded && title) return `RSVP to ${title}`.slice(0, 120);
+  return null;
+}
+
 export async function runExtractor(deps: AgentDeps, itemId: string): Promise<AgentOutcome> {
   const { db } = deps;
   const ctx = await loadItemContext(db, itemId);
@@ -93,41 +119,24 @@ export async function runExtractor(deps: AgentDeps, itemId: string): Promise<Age
     });
     return { status: 'skipped', reason: 'thread already has an open task' };
   }
-  const content = await itemContent(deps, ctx);
-  await audit(db, {
-    userId,
-    principal: PRINCIPAL,
-    action: 'agent.read',
-    target,
-    details: {
-      accountId,
-      resource,
-      bodyIncluded: content.bodyIncluded,
-      mode: fromMe ? 'promises' : 'requests',
-    },
-  });
-
   const refDate = localParts(ctx.item.receivedAt, ctx.timezone).date;
-  const res = await deps.router.generate({
-    userId,
-    agent: 'extractor',
-    system: fromMe ? `${EXTRACTOR_SYSTEM}\n${PROMISES_ADDENDUM}` : EXTRACTOR_SYSTEM,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          referenceLines(ctx.item.receivedAt, ctx.timezone),
-          fromMe ? 'Mode: promises' : 'Mode: requests',
-          fenceItem(ctx.item.kind, content.text),
-        ].join('\n\n'),
-      },
-    ],
-    maxTokens: 4096,
-    effort: 'low',
-    json: true,
-  });
-  const out = parseModelJson(res.text, ExtractorOutput);
-  const found = out.tasks.slice(0, 5);
+  const fromSignal = fromMe ? null : signalTask(ctx);
+  const res = fromSignal
+    ? {
+        model: null,
+        found: [{ title: fromSignal, due: null, dueTime: null, project: null, confidence: 1 }],
+      }
+    : await extractWithModel(deps, ctx, fromMe);
+  const found = res.found.slice(0, 5);
+  if (fromSignal) {
+    await audit(db, {
+      userId,
+      principal: PRINCIPAL,
+      action: 'agent.read',
+      target,
+      details: { accountId, resource, bodyIncluded: false, mode: 'signal' },
+    });
+  }
 
   if (found.length === 0) {
     await audit(db, {
@@ -245,4 +254,42 @@ async function threadHasOpenTask(
     )
     .limit(1);
   return !!row;
+}
+
+async function extractWithModel(deps: AgentDeps, ctx: ItemContext, fromMe: boolean) {
+  const resource = resourceForKind(ctx.item.kind);
+  const content = await itemContent(deps, ctx);
+  await audit(deps.db, {
+    userId: ctx.account.userId,
+    principal: PRINCIPAL,
+    action: 'agent.read',
+    target: `item:${ctx.item.id}`,
+    details: {
+      accountId: ctx.account.id,
+      resource,
+      bodyIncluded: content.bodyIncluded,
+      mode: fromMe ? 'promises' : 'requests',
+    },
+  });
+  const res = await deps.router.generate({
+    userId: ctx.account.userId,
+    agent: 'extractor',
+    system: fromMe ? `${EXTRACTOR_SYSTEM}\n${PROMISES_ADDENDUM}` : EXTRACTOR_SYSTEM,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          referenceLines(ctx.item.receivedAt, ctx.timezone),
+          itemFacts(ctx),
+          fromMe ? 'Mode: promises' : 'Mode: requests',
+          fenceItem(ctx.item.kind, content.text),
+        ].join('\n\n'),
+      },
+    ],
+    maxTokens: 4096,
+    effort: 'low',
+    json: true,
+  });
+  const out = parseModelJson(res.text, ExtractorOutput);
+  return { model: res.model as string | null, found: out.tasks };
 }

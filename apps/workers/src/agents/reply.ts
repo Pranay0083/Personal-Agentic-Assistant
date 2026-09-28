@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { audit, items, proposals } from '@hub/db';
 import { parseModelJson } from '@hub/models';
-import { GmailSendPayload } from '@hub/shared';
+import { EmailSendPayload, SlackPostPayload, type ProposalAction } from '@hub/shared';
 import { QUEUES, type NotifierJob } from '@hub/shared/queues';
 import {
   agentPrincipal,
@@ -12,6 +12,8 @@ import {
   isFromMe,
   itemContent,
   jobId,
+  labelsOf,
+  labelValue,
   loadItemContext,
   referenceLines,
   type AgentDeps,
@@ -19,7 +21,7 @@ import {
   type ItemContext,
 } from './context';
 import { PUSH_TEXT } from '../notifier/text';
-import { REPLY_SYSTEM, ReplyOutput } from './prompts';
+import { CHAT_REPLY_SYSTEM, REPLY_SYSTEM, ReplyOutput } from './prompts';
 
 const PRINCIPAL = 'agent:reply';
 
@@ -29,13 +31,80 @@ export function messageIdOf(item: ItemContext['item']): string | undefined {
   if (t && typeof t.messageId === 'string' && /^<[^<>\s]+@[^<>\s]+>$/.test(t.messageId)) {
     return t.messageId;
   }
-  const labels = Array.isArray(item.labels) ? (item.labels as unknown[]) : [];
-  for (const l of labels) {
-    if (typeof l !== 'string') continue;
+  for (const l of labelsOf(item)) {
     const v = l.startsWith('rfc822msgid:') ? l.slice('rfc822msgid:'.length) : l;
     if (/^<[^<>\s]+@[^<>\s]+>$/.test(v)) return v;
   }
   return undefined;
+}
+
+// Provider ids, validated before they go into a payload (they come from connector labels).
+const OUTLOOK_ID = /^[A-Za-z0-9+/=_-]{1,512}$/;
+const SLACK_CHANNEL = /^[CDG][A-Z0-9]{2,30}$/;
+const SLACK_TS = /^\d{1,12}\.\d{1,9}$/;
+
+/**
+ * Where a reply to this item goes, taken only from the stored item (author address and
+ * connector labels), never from model output or message text. Null: no reply channel.
+ */
+export type ReplyTarget =
+  | {
+      action: Extract<ProposalAction, 'gmail.send' | 'outlook.send'>;
+      to: string;
+      inReplyTo?: string;
+      threadId?: string;
+    }
+  | { action: 'slack.post'; channel: string; threadTs?: string; channelName: string | null };
+
+export function replyTarget(ctx: ItemContext): ReplyTarget | null {
+  const { item, account } = ctx;
+  const labels = labelsOf(item);
+  if (item.kind === 'email' && (account.provider === 'gmail' || account.provider === 'microsoft')) {
+    const to = z.email().safeParse(item.authorAddress?.trim());
+    if (!to.success) return null;
+    const threadId = item.threadId ?? undefined;
+    if (account.provider === 'gmail') {
+      const inReplyTo = messageIdOf(item);
+      return {
+        action: 'gmail.send',
+        to: to.data,
+        ...(threadId ? { threadId } : {}),
+        ...(inReplyTo ? { inReplyTo } : {}),
+      };
+    }
+    const id = labelValue(labels, 'outlook:id:');
+    return {
+      action: 'outlook.send',
+      to: to.data,
+      ...(threadId ? { threadId } : {}),
+      ...(id && OUTLOOK_ID.test(id) ? { inReplyTo: id } : {}),
+    };
+  }
+  if (item.kind === 'chat' && account.provider === 'slack') {
+    const channel = labelValue(labels, 'slack:channel:');
+    if (!channel || !SLACK_CHANNEL.test(channel)) return null;
+    const thread = labelValue(labels, 'slack:thread:');
+    const ts = labelValue(labels, 'slack:ts:');
+    // Reply in the existing thread; otherwise start one under the message. In a DM, an
+    // unthreaded message gets a plain reply.
+    const threadTs =
+      thread && SLACK_TS.test(thread)
+        ? thread
+        : !channel.startsWith('D') && ts && SLACK_TS.test(ts)
+          ? ts
+          : undefined;
+    if (!threadTs && !channel.startsWith('D')) return null;
+    const name =
+      labelValue(labels, 'slack:channel_name:') ??
+      (item.title?.startsWith('#') ? item.title.slice(1) : undefined);
+    return {
+      action: 'slack.post',
+      channel,
+      ...(threadTs ? { threadTs } : {}),
+      channelName: name && /^[\w.-]{1,80}$/.test(name) ? name : null,
+    };
+  }
+  return null;
 }
 
 const cleanTopic = (s: string) =>
@@ -46,15 +115,28 @@ const cleanTopic = (s: string) =>
     .trim()
     .slice(0, 60);
 
+/**
+ * Removes Slack control sequences from drafted text: `<!channel>`, `<!here>`, `<@U…>` user
+ * pings, `<#C…>` channel links and `<https://…|…>` links. The draft is model output over
+ * untrusted text; it must not ping people or link anywhere.
+ */
+export function slackSafeText(s: string): string {
+  return s
+    .replace(/<(?:[!@#]|https?:|mailto:)[^>]*>/gi, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
+}
+
 export async function runReply(deps: AgentDeps, itemId: string): Promise<AgentOutcome> {
   const { db } = deps;
   const ctx = await loadItemContext(db, itemId);
   if (!ctx) return { status: 'missing' };
-  if (ctx.item.kind !== 'email') return { status: 'unsupported_kind' };
+  if (ctx.item.kind !== 'email' && ctx.item.kind !== 'chat') return { status: 'unsupported_kind' };
   if (isFromMe(ctx)) return { status: 'from_me' };
-  // Recipient comes from the DB, never from model output.
-  const to = z.email().safeParse(ctx.item.authorAddress?.trim());
-  if (!to.success) return { status: 'no_recipient' };
+  // Recipient / channel come from the DB, never from model output.
+  const dest = replyTarget(ctx);
+  if (!dest) return { status: 'no_recipient' };
+  const readResource = ctx.item.kind === 'chat' ? 'chat' : 'email';
 
   const userId = ctx.account.userId;
   const accountId = ctx.account.id;
@@ -63,7 +145,7 @@ export async function runReply(deps: AgentDeps, itemId: string): Promise<AgentOu
   const idempotencyKey = `reply:${itemId}`;
 
   for (const [resource, action] of [
-    ['email', 'read'],
+    [readResource, 'read'],
     ['draft.write', 'write'],
     ['message.send', 'draft'],
   ] as const) {
@@ -83,19 +165,19 @@ export async function runReply(deps: AgentDeps, itemId: string): Promise<AgentOu
     principal: PRINCIPAL,
     action: 'agent.read',
     target,
-    details: { accountId, resource: 'email', bodyIncluded: content.bodyIncluded },
+    details: { accountId, resource: readResource, bodyIncluded: content.bodyIncluded },
   });
 
   const res = await deps.router.generate({
     userId,
     agent: 'reply',
-    system: REPLY_SYSTEM,
+    system: dest.action === 'slack.post' ? CHAT_REPLY_SYSTEM : REPLY_SYSTEM,
     messages: [
       {
         role: 'user',
         content: [
           referenceLines(ctx.item.receivedAt, ctx.timezone),
-          fenceItem('email', content.text),
+          fenceItem(ctx.item.kind, content.text),
         ].join('\n\n'),
       },
     ],
@@ -105,22 +187,39 @@ export async function runReply(deps: AgentDeps, itemId: string): Promise<AgentOu
   });
   const out = parseModelJson(res.text, ReplyOutput);
 
+  const who = firstNameOf(ctx.item.author, ctx.item.authorAddress);
   const subjectBase = (ctx.item.title ?? '').trim();
-  const subject = /^re:/i.test(subjectBase) ? subjectBase : `Re: ${subjectBase}`.trim();
-  const inReplyTo = messageIdOf(ctx.item);
-  const payload = GmailSendPayload.parse({
-    to: [to.data],
-    cc: [],
-    subject,
-    body: out.body.trim(),
-    ...(ctx.item.threadId ? { threadId: ctx.item.threadId } : {}),
-    ...(inReplyTo ? { inReplyTo } : {}),
-  });
-  const topic =
-    cleanTopic(out.topic ?? '') ||
-    cleanTopic(subjectBase.replace(/^((re|fwd?)\s*:\s*)+/i, '')) ||
-    'your message';
-  const title = `Reply to ${firstNameOf(ctx.item.author, ctx.item.authorAddress)}: ${topic}`;
+  let payload: Record<string, unknown>;
+  let title: string;
+  if (dest.action === 'slack.post') {
+    const text = slackSafeText(out.body);
+    if (!text) return { status: 'empty_draft' };
+    payload = SlackPostPayload.parse({
+      channel: dest.channel,
+      text: text.slice(0, 4000),
+      ...(dest.threadTs ? { threadTs: dest.threadTs } : {}),
+    });
+    title = dest.channelName
+      ? `Reply to ${who} in #${dest.channelName}`
+      : dest.channel.startsWith('D')
+        ? `Reply to ${who} on Slack`
+        : `Reply to ${who} in Slack`;
+  } else {
+    const subject = /^re:/i.test(subjectBase) ? subjectBase : `Re: ${subjectBase}`.trim();
+    payload = EmailSendPayload.parse({
+      to: [dest.to],
+      cc: [],
+      subject,
+      body: out.body.trim(),
+      ...(dest.threadId ? { threadId: dest.threadId } : {}),
+      ...(dest.inReplyTo ? { inReplyTo: dest.inReplyTo } : {}),
+    });
+    const topic =
+      cleanTopic(out.topic ?? '') ||
+      cleanTopic(subjectBase.replace(/^((re|fwd?)\s*:\s*)+/i, '')) ||
+      'your message';
+    title = `Reply to ${who}: ${topic}`;
+  }
 
   const [row] = await db
     .insert(proposals)
@@ -129,7 +228,7 @@ export async function runReply(deps: AgentDeps, itemId: string): Promise<AgentOu
       accountId,
       agent: PRINCIPAL,
       model: res.model,
-      action: 'gmail.send',
+      action: dest.action,
       title,
       payload,
       status: 'pending',
@@ -152,7 +251,7 @@ export async function runReply(deps: AgentDeps, itemId: string): Promise<AgentOu
     details: {
       itemId,
       accountId,
-      action: 'gmail.send',
+      action: dest.action,
       model: res.model,
       fallbackUsed: res.fallbackUsed,
     },

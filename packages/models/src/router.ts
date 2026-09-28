@@ -99,7 +99,13 @@ export function createRouter(opts: RouterOptions): ModelRouter {
   async function resolvePrimary(
     userId: string,
     agent: string,
-  ): Promise<{ leg: () => Promise<Leg>; fallback: boolean; recommendedLeg: boolean }> {
+  ): Promise<{
+    leg: () => Promise<Leg>;
+    fallback: boolean;
+    recommendedLeg: boolean;
+    /** What to log if building the adapter itself fails (bad config, undecryptable key). */
+    hint?: { kind: string; model: string };
+  }> {
     const [cfg] = await db
       .select()
       .from(agentConfigs)
@@ -124,7 +130,9 @@ export function createRouter(opts: RouterOptions): ModelRouter {
       };
     }
     const providerId = cfg.providerId;
+    const hint = { kind: 'unknown', model: cfg.model };
     return {
+      hint,
       // Built lazily so the key is decrypted only right before the call.
       leg: async () => {
         const [p] = await db
@@ -132,6 +140,7 @@ export function createRouter(opts: RouterOptions): ModelRouter {
           .from(providers)
           .where(and(eq(providers.id, providerId), eq(providers.userId, userId)));
         if (!p) throw new ModelConfigError('configured model provider not found');
+        hint.kind = p.kind;
         const apiKey = p.secretRef ? await secrets.get(p.secretRef, { userId }) : undefined;
         const provider = factory({
           kind: p.kind as ModelProviderKind,
@@ -209,6 +218,7 @@ export function createRouter(opts: RouterOptions): ModelRouter {
     getLeg: () => Promise<Leg>,
     req: RouteRequest,
     fallbackUsed: boolean,
+    hint?: { kind: string; model: string },
   ): Promise<RouteResult> {
     const started = Date.now();
     let leg: Leg | undefined;
@@ -227,8 +237,8 @@ export function createRouter(opts: RouterOptions): ModelRouter {
     } catch (err) {
       await logUsage(
         req,
-        leg?.provider.kind ?? 'unknown',
-        leg?.model ?? 'unknown',
+        leg?.provider.kind ?? hint?.kind ?? 'unknown',
+        leg?.model ?? hint?.model ?? 'unknown',
         null,
         Date.now() - started,
         fallbackUsed,
@@ -242,7 +252,7 @@ export function createRouter(opts: RouterOptions): ModelRouter {
       await checkBudget(req.userId);
       const primary = await resolvePrimary(req.userId, req.agent);
       try {
-        return await runLeg(primary.leg, req, false);
+        return await runLeg(primary.leg, req, false, primary.hint);
       } catch (err) {
         if (!primary.fallback || primary.recommendedLeg || err instanceof BudgetExceededError) {
           throw err;

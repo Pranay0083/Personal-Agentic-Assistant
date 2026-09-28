@@ -3,7 +3,14 @@ import { and, eq } from 'drizzle-orm';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { accounts, items, proposals } from '@hub/db';
-import { GmailSendPayload, ProposalAction } from '@hub/shared';
+import {
+  PROPOSAL_PAYLOADS,
+  ProposalAction,
+  type EmailSendPayload,
+  type JiraCommentPayload,
+  type JiraTransitionPayload,
+  type SlackPostPayload,
+} from '@hub/shared';
 import { QUEUES, type NotifierJob } from '@hub/shared/queues';
 import {
   auditTool,
@@ -16,12 +23,22 @@ import {
 } from './common';
 
 export const ProposeInput = {
-  accountId: z.uuid().describe('Account to act from, e.g. the Gmail account that will send'),
-  action: ProposalAction.describe('gmail.send is supported today'),
+  accountId: z
+    .uuid()
+    .describe(
+      'Account to act from; its provider must match the action (Gmail, Microsoft 365, Slack, Jira)',
+    ),
+  action: ProposalAction.describe(
+    'gmail.send (Gmail account), outlook.send (Microsoft 365), slack.post (Slack), ' +
+      'jira.transition and jira.comment (Atlassian). gmail.label is not supported yet.',
+  ),
   payload: z
     .record(z.string(), z.unknown())
     .describe(
-      'For gmail.send: { to: string[], cc?: string[], subject, body, inReplyTo?, threadId? }',
+      'gmail.send / outlook.send: { to: string[], cc?: string[], subject, body, inReplyTo?, threadId? }. ' +
+        'slack.post: { channel, text, threadTs? }. ' +
+        'jira.transition: { issueKey, transitionId, toStatus, comment? }. ' +
+        'jira.comment: { issueKey, body }.',
     ),
   reason: z.string().trim().min(1).max(500).describe('Why, shown to the user'),
   idempotencyKey: z
@@ -41,16 +58,29 @@ type ProposeArgs = {
   sourceItemId?: string;
 };
 
-/** Policy resource and provider behind each executor action. */
-const ACTIONS: Record<
-  ProposalAction,
-  { resource: string; provider: string; schema?: z.ZodType<Record<string, unknown>> }
-> = {
-  'gmail.send': { resource: 'message.send', provider: 'gmail', schema: GmailSendPayload },
+/**
+ * Policy resource and account provider behind each executor action (the executor enforces
+ * the same pairs). Payloads are validated with the shared PROPOSAL_PAYLOADS schemas.
+ */
+const ACTIONS: Record<ProposalAction, { resource: string; provider: string }> = {
+  'gmail.send': { resource: 'message.send', provider: 'gmail' },
   'gmail.label': { resource: 'email.label', provider: 'gmail' },
-  'jira.transition': { resource: 'ticket.update', provider: 'atlassian' },
+  'outlook.send': { resource: 'message.send', provider: 'microsoft' },
   'slack.post': { resource: 'message.send', provider: 'slack' },
+  'jira.transition': { resource: 'ticket.update', provider: 'atlassian' },
+  'jira.comment': { resource: 'ticket.update', provider: 'atlassian' },
 };
+
+const PROVIDER_NAME: Record<string, string> = {
+  gmail: 'Gmail',
+  microsoft: 'Microsoft 365',
+  slack: 'Slack',
+  atlassian: 'Atlassian',
+};
+
+function schemaFor(action: ProposalAction): z.ZodType<Record<string, unknown>> | undefined {
+  return (PROPOSAL_PAYLOADS as Record<string, z.ZodType<Record<string, unknown>>>)[action];
+}
 
 /** Stable JSON: object keys sorted at every level. */
 export function canonicalJson(v: unknown): string {
@@ -66,12 +96,36 @@ export function canonicalJson(v: unknown): string {
   return JSON.stringify(v);
 }
 
+const short = (s: string, n: number) => {
+  const one = s.replace(/\s+/g, ' ').trim();
+  return one.length > n ? `${one.slice(0, n - 1)}…` : one;
+};
+
 function titleFor(action: ProposalAction, payload: Record<string, unknown>): string {
-  if (action === 'gmail.send') {
-    const p = payload as GmailSendPayload;
-    return `Email ${p.to.join(', ')}: ${p.subject || '(no subject)'}`.slice(0, 140);
+  switch (action) {
+    case 'gmail.send':
+    case 'outlook.send': {
+      const p = payload as EmailSendPayload;
+      return `Email ${p.to.join(', ')}: ${p.subject || '(no subject)'}`.slice(0, 140);
+    }
+    case 'slack.post': {
+      const p = payload as SlackPostPayload;
+      return `Post in Slack ${p.channel}${p.threadTs ? ' (thread)' : ''}: ${short(p.text, 80)}`.slice(
+        0,
+        140,
+      );
+    }
+    case 'jira.transition': {
+      const p = payload as JiraTransitionPayload;
+      return `Move ${p.issueKey} to ${short(p.toStatus, 60)}`;
+    }
+    case 'jira.comment': {
+      const p = payload as JiraCommentPayload;
+      return `Comment on ${p.issueKey}: ${short(p.body, 80)}`.slice(0, 140);
+    }
+    default:
+      return action;
   }
-  return action;
 }
 
 export async function proposeAction(env: ToolEnv, args: ProposeArgs): Promise<CallToolResult> {
@@ -106,12 +160,16 @@ export async function proposeAction(env: ToolEnv, args: ProposeArgs): Promise<Ca
     .where(and(eq(accounts.id, args.accountId), eq(accounts.userId, env.principal.userId)));
   if (!account) return deny('account not found', 'No such account.');
   if (account.provider !== spec.provider) {
-    return deny('wrong provider', `${args.action} needs a ${spec.provider} account.`);
+    return deny(
+      'wrong provider',
+      `${args.action} needs a ${PROVIDER_NAME[spec.provider] ?? spec.provider} account.`,
+    );
   }
-  if (!spec.schema) {
+  const schema = schemaFor(args.action);
+  if (!schema) {
     return deny('unsupported action', `${args.action} proposals are not supported yet.`);
   }
-  const parsed = spec.schema.safeParse(args.payload);
+  const parsed = schema.safeParse(args.payload);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join('.') || 'payload'}: ${i.message}`);
     return deny('invalid payload', `Invalid payload for ${args.action}:\n${issues.join('\n')}`);

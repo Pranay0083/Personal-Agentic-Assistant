@@ -9,17 +9,21 @@ import {
   fenceItem,
   isFromMe,
   itemContent,
+  itemFacts,
   jobId,
   loadItemContext,
   referenceLines,
   resourceForKind,
+  signalsOf,
   snippetOf,
   type AgentDeps,
   type AgentOutcome,
   type ItemContext,
+  type ItemSignals,
 } from './context';
 import { PUSH_TEXT } from '../notifier/text';
 import { TRIAGE_SYSTEM, TriageOutput } from './prompts';
+import { replyTarget } from './reply';
 
 const PRINCIPAL = 'agent:triage';
 
@@ -70,6 +74,37 @@ export async function isVipSender(db: Db, ctx: ItemContext): Promise<boolean> {
     .from(people)
     .where(and(eq(people.userId, ctx.account.userId), eq(people.isVip, true)));
   return vipPeople.some((p) => p.emails.some((e) => e.toLowerCase() === addr));
+}
+
+/**
+ * Applies trusted provider signals on top of the model's decision: a mention, a review
+ * request, an assignment or a pending RSVP always needs the user, with a consistent chip.
+ * Signals only ever raise an item to needs_you; they never hide one.
+ */
+export function applySignals(
+  out: Pick<TriageOutput, 'bucket' | 'statusLabel'>,
+  s: ItemSignals,
+): { bucket: TriageOutput['bucket']; statusLabel: string | null | undefined; forced: boolean } {
+  const label = s.blocking
+    ? `Blocking ${s.blocking} people`
+    : s.reviewRequested
+      ? 'Review requested'
+      : s.assigned
+        ? 'Assigned to you'
+        : s.rsvpNeeded
+          ? 'RSVP needed'
+          : null;
+  const must = s.mention || s.reviewRequested || s.assigned || s.rsvpNeeded;
+  if (!must) return { bucket: out.bucket, statusLabel: out.statusLabel, forced: false };
+  const modelLabel =
+    out.bucket === 'needs_you' && out.statusLabel && !/^fyi$/i.test(out.statusLabel.trim())
+      ? out.statusLabel
+      : null;
+  return {
+    bucket: 'needs_you',
+    statusLabel: label ?? modelLabel ?? 'Mentioned you',
+    forced: out.bucket !== 'needs_you',
+  };
 }
 
 export async function runTriage(deps: AgentDeps, itemId: string): Promise<AgentOutcome> {
@@ -124,6 +159,7 @@ export async function runTriage(deps: AgentDeps, itemId: string): Promise<AgentO
         role: 'user',
         content: [
           referenceLines(ctx.item.receivedAt, ctx.timezone),
+          itemFacts(ctx),
           feedback.length ? fenceUntrusted(JSON.stringify(feedback), 'feedback') : '',
           fenceItem(ctx.item.kind, content.text),
         ]
@@ -135,7 +171,9 @@ export async function runTriage(deps: AgentDeps, itemId: string): Promise<AgentO
     effort: 'low',
     json: true,
   });
-  const out = parseModelJson(res.text, TriageOutput);
+  const parsed = parseModelJson(res.text, TriageOutput);
+  const signaled = applySignals(parsed, signalsOf(ctx.item));
+  const out = { ...parsed, bucket: signaled.bucket, statusLabel: signaled.statusLabel };
   const summary = out.summary.replace(/\s+/g, ' ').trim().slice(0, 200);
   const statusLabel =
     out.bucket === 'ignore'
@@ -153,7 +191,7 @@ export async function runTriage(deps: AgentDeps, itemId: string): Promise<AgentO
         bucket: out.bucket,
         summary,
         expectsReply,
-        reason: out.reason?.slice(0, 200) ?? null,
+        reason: signaled.forced ? 'provider signal' : (out.reason?.slice(0, 200) ?? null),
         // Keep the provider snippet: `summary` now holds the triage line.
         snippet: snippetOf(ctx.item),
         model: res.model,
@@ -177,7 +215,8 @@ export async function runTriage(deps: AgentDeps, itemId: string): Promise<AgentO
     await deps.enqueue(QUEUES.agents, { agent: 'extractor', itemId } satisfies AgentJob, {
       jobId: jobId('extractor', itemId),
     });
-    if (expectsReply && ctx.item.kind === 'email' && ctx.item.authorAddress) {
+    // Only where the reply agent can answer (Gmail, Outlook, Slack) with a stored target.
+    if (expectsReply && replyTarget(ctx)) {
       await deps.enqueue(QUEUES.agents, { agent: 'reply', itemId } satisfies AgentJob, {
         jobId: jobId('reply', itemId),
       });

@@ -397,6 +397,147 @@ describe('propose_action', () => {
     });
     expect(j.isError).toBe(true);
   });
+
+  describe('Phase 5 actions', () => {
+    let slack: string;
+    let m365: string;
+
+    beforeAll(async () => {
+      const rows = await t.db
+        .insert(accounts)
+        .values([
+          { userId, provider: 'slack', nickname: 'Acme', color: '#4A154B', externalId: 'T0ACME' },
+          {
+            userId,
+            provider: 'microsoft',
+            nickname: 'Contoso',
+            color: '#2B579A',
+            externalId: 'me@contoso.com',
+          },
+        ])
+        .returning();
+      [slack, m365] = rows.map((r) => r.id) as [string, string];
+    });
+
+    const latest = async (accountId: string) =>
+      (await t.db.select().from(proposals).where(eq(proposals.accountId, accountId))).at(-1);
+
+    it('outlook.send on a Microsoft 365 account', async () => {
+      const r = await call('propose_action', {
+        accountId: m365,
+        action: 'outlook.send',
+        payload: { to: ['priya@contoso.com'], subject: 'Re: API spec', body: 'In the wiki.' },
+        reason: 'Answer Priya',
+      });
+      expect(r.isError).toBe(false);
+      expect(await latest(m365)).toMatchObject({
+        action: 'outlook.send',
+        status: 'pending',
+        title: 'Email priya@contoso.com: Re: API spec',
+        payload: { to: ['priya@contoso.com'], cc: [], subject: 'Re: API spec' },
+      });
+    });
+
+    it('slack.post on a Slack account', async () => {
+      const r = await call('propose_action', {
+        accountId: slack,
+        action: 'slack.post',
+        payload: {
+          channel: 'C024BE91L',
+          text: 'The spec is in the wiki.',
+          threadTs: '1727500000.0001',
+        },
+        reason: 'Answer in thread',
+      });
+      expect(r.isError).toBe(false);
+      expect(await latest(slack)).toMatchObject({
+        action: 'slack.post',
+        title: 'Post in Slack C024BE91L (thread): The spec is in the wiki.',
+        payload: {
+          channel: 'C024BE91L',
+          text: 'The spec is in the wiki.',
+          threadTs: '1727500000.0001',
+        },
+      });
+    });
+
+    it('jira.transition and jira.comment on an Atlassian account', async () => {
+      const a = await call('propose_action', {
+        accountId: jira,
+        action: 'jira.transition',
+        payload: { issueKey: 'PAY-12', transitionId: '31', toStatus: 'In Progress' },
+        reason: 'Start work',
+      });
+      expect(a.isError).toBe(false);
+      expect((await latest(jira))!.title).toBe('Move PAY-12 to In Progress');
+      const b = await call('propose_action', {
+        accountId: jira,
+        action: 'jira.comment',
+        payload: { issueKey: 'PAY-12', body: 'Retries now back off exponentially.' },
+        reason: 'Update',
+      });
+      expect(b.isError).toBe(false);
+      expect(await latest(jira)).toMatchObject({
+        action: 'jira.comment',
+        title: 'Comment on PAY-12: Retries now back off exponentially.',
+      });
+    });
+
+    it('refuses an action on an account of another provider', async () => {
+      const before = (await t.db.select().from(proposals)).length;
+      const cases = [
+        { accountId: work, action: 'slack.post', payload: { channel: 'C1', text: 'x' } },
+        { accountId: work, action: 'outlook.send', payload },
+        { accountId: m365, action: 'gmail.send', payload },
+        { accountId: slack, action: 'jira.comment', payload: { issueKey: 'PAY-12', body: 'x' } },
+      ];
+      for (const c of cases) {
+        const r = await call('propose_action', { ...c, reason: 'x' });
+        expect(r.isError).toBe(true);
+        expect(r.text).toMatch(/needs a|Not allowed/);
+      }
+      const wrong = await call('propose_action', { ...cases[1]!, reason: 'x' });
+      expect(wrong.text).toContain('outlook.send needs a Microsoft 365 account');
+      expect((await t.db.select().from(proposals)).length).toBe(before);
+    });
+
+    it('validates each payload with its schema', async () => {
+      const bad = [
+        { accountId: slack, action: 'slack.post', payload: { text: 'no channel' } },
+        { accountId: jira, action: 'jira.comment', payload: { issueKey: 'pay-12', body: 'x' } },
+        {
+          accountId: jira,
+          action: 'jira.transition',
+          payload: { issueKey: 'PAY-12', toStatus: 'Done' },
+        },
+      ];
+      for (const c of bad) {
+        const r = await call('propose_action', { ...c, reason: 'x' });
+        expect(r.isError).toBe(true);
+        expect(r.text).toContain(`Invalid payload for ${c.action}`);
+      }
+      const label = await call('propose_action', {
+        accountId: work,
+        action: 'gmail.label',
+        payload: { label: 'x' },
+        reason: 'x',
+      });
+      expect(label.isError).toBe(true);
+      expect(label.text).toContain('not supported yet');
+    });
+
+    it('jira actions need ticket.update (never under the cautious preset)', async () => {
+      await t.db.update(users).set({ preset: 'cautious' }).where(eq(users.id, userId));
+      const r = await call('propose_action', {
+        accountId: jira,
+        action: 'jira.comment',
+        payload: { issueKey: 'PAY-12', body: 'x' },
+        reason: 'x',
+      });
+      expect(r.isError).toBe(true);
+      expect(r.text).toContain('Not allowed');
+    });
+  });
 });
 
 describe('kill switch', () => {

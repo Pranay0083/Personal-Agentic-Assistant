@@ -14,6 +14,7 @@ import {
   promiseSentences,
   readFences,
   requestSentences,
+  sentences,
   stripSubject,
   taskTitle,
   type Fence,
@@ -28,7 +29,10 @@ import {
  *   kind, e.g. `email`) starts with `From:` and `Subject:` headers, a blank line, then text.
  * - Triage may add a `feedback` block: JSON `[{verdict:"confirmed"|"rejected", title, from}]`.
  * - Brief sends a `brief-data` block: JSON `{tasks:[{title,due,from,overdue}], needsYou:[{from,title,summary}]}`.
- * - Trusted lines outside the fences: `Reference date: YYYY-MM-DD` and optionally `Mode: promises`.
+ * - Trusted lines outside the fences: `Reference date: YYYY-MM-DD`, optionally `Mode: promises`,
+ *   and item facts: `Source: <provider> <kind>`, `Reference: api#231 (pull request)`,
+ *   `Signals: mentions you, review requested from you, assigned to you, blocking 2 people, …`.
+ *   Without signal lines (demo data), the same cues are read from the text.
  * The request's `agent` field selects the output shape. Output is JSON for agents, text otherwise.
  */
 export class FakeProvider implements ModelProvider {
@@ -49,13 +53,14 @@ export class FakeProvider implements ModelProvider {
     const meta = outsideFences(`${req.system}\n${prompt}`);
     const ref = /^Reference date:\s*(\d{4}-\d{2}-\d{2})/m.exec(meta)?.[1] ?? null;
 
+    const facts = readFacts(meta);
     let out: unknown;
     switch (req.agent) {
       case 'triage':
-        out = fakeTriage(fences, ref);
+        out = fakeTriage(fences, ref, facts);
         break;
       case 'extractor':
-        out = fakeExtract(fences, ref, /^Mode:\s*promises/m.test(meta));
+        out = fakeExtract(fences, ref, /^Mode:\s*promises/m.test(meta), facts);
         break;
       case 'brief':
         out = fakeBrief(fences);
@@ -80,13 +85,80 @@ export class FakeProvider implements ModelProvider {
   }
 }
 
-function itemFence(fences: Fence[]): ParsedItem {
+function itemFence(fences: Fence[]): ParsedItem & { kind: string } {
   const f = fences.find((x) => !['feedback', 'brief-data'].includes(x.label)) ?? {
     label: 'content',
     content: '',
   };
-  return parseItem(f.content);
+  return { ...parseItem(f.content), kind: f.label };
 }
+
+type Facts = {
+  ref: string | null;
+  refType: string | null;
+  mention: boolean;
+  dm: boolean;
+  reviewRequested: boolean;
+  assigned: boolean;
+  blocking: number | null;
+  rsvpNeeded: boolean;
+};
+
+/** Trusted item facts written by the agents outside the fences. */
+function readFacts(meta: string): Facts {
+  const ref = /^Reference:\s*(\S+)\s*\(([^)]+)\)\s*$/m.exec(meta);
+  const sig = /^Signals:\s*(.+)$/m.exec(meta)?.[1] ?? '';
+  const blocking = /\bblocking (\d+) people\b/.exec(sig)?.[1];
+  return {
+    ref: ref?.[1] ?? null,
+    refType: ref?.[2] ?? null,
+    mention: /\bmentions you\b/.test(sig),
+    dm: /\bdirect message\b/.test(sig),
+    reviewRequested: /\breview requested\b/.test(sig),
+    assigned: /\bassigned to you\b/.test(sig),
+    blocking: blocking ? Number(blocking) : null,
+    rsvpNeeded: /\bRSVP needed\b/.test(sig),
+  };
+}
+
+const WORD_NUM = '(\\d+|two|three|four|five|six)';
+const BLOCKING_RE = new RegExp(
+  `\\bblock(?:ing|s|ed)\\s+${WORD_NUM}\\s+(?:people|folks|teammates|teams?|engineers|devs)\\b|\\b${WORD_NUM}\\s+(?:teammates|people|folks|engineers|devs)\\s+(?:are|is)\\s+(?:waiting|blocked)\\b`,
+  'i',
+);
+
+/** Facts from the signal lines, or from the text when the connector set none (demo data). */
+function cuesFor(item: ParsedItem & { kind: string }, facts: Facts): Facts {
+  const text = `${item.subject}\n${item.body}`;
+  const b = BLOCKING_RE.exec(text);
+  const tracked = item.kind === 'ticket' || item.kind === 'code';
+  return {
+    ...facts,
+    mention: facts.mention || /\b(?:mentioned you|you were mentioned)\b/i.test(text),
+    reviewRequested:
+      facts.reviewRequested ||
+      (tracked &&
+        /\b(?:requested (?:your|a) review|review requested|requested you to review)\b/i.test(text)),
+    assigned:
+      facts.assigned ||
+      (tracked && /\bassigned (?:(?:this|it) )?to you\b|\bassigned you\b/i.test(text)),
+    blocking: facts.blocking ?? (b ? wordNum((b[1] ?? b[2])!) : null),
+    rsvpNeeded:
+      facts.rsvpNeeded ||
+      (item.kind === 'event' &&
+        /\b(?:rsvp|please respond|awaiting your response|accept or decline)\b/i.test(text)),
+  };
+}
+
+/** Issue/PR reference: the trusted Reference line, else a key or `repo#n` in the subject. */
+function refFor(item: ParsedItem, facts: Facts): string | null {
+  if (facts.ref) return facts.ref;
+  const m =
+    /\b([A-Z][A-Z0-9_]+-\d+)\b/.exec(item.subject) ?? /\b([\w.-]+#\d+)\b/.exec(item.subject);
+  return m?.[1] ?? null;
+}
+
+const REPLYABLE = new Set(['email', 'chat']);
 
 type Feedback = { verdict: 'confirmed' | 'rejected'; title: string; from: string | null };
 
@@ -101,25 +173,42 @@ function readFeedback(fences: Fence[]): Feedback[] {
   }
 }
 
-function fakeTriage(fences: Fence[], ref: string | null) {
+function fakeTriage(fences: Fence[], ref: string | null, facts: Facts) {
   const item = itemFence(fences);
+  const cues = cuesFor(item, facts);
   const who = firstName(item.fromName, item.fromAddress) ?? 'Someone';
   const requests = requestSentences(item.body);
-  const text = `${item.subject}\n${item.body}`;
+  const kind = item.kind;
+  const tracked = kind === 'ticket' || kind === 'code';
+  const itemRef = refFor(item, facts);
 
   let bucket: 'needs_you' | 'fyi' | 'ignore' = 'fyi';
   let reason = 'informational';
-  if (isNoise(item)) {
+  if (cues.reviewRequested) {
+    bucket = 'needs_you';
+    reason = 'your review was requested';
+  } else if (cues.assigned) {
+    bucket = 'needs_you';
+    reason = 'assigned to you';
+  } else if (cues.rsvpNeeded) {
+    bucket = 'needs_you';
+    reason = 'the invite needs an answer';
+  } else if (cues.mention && !isNoise(item)) {
+    bucket = 'needs_you';
+    reason = 'you were mentioned';
+  } else if (isNoise(item)) {
     bucket = 'ignore';
     reason = 'automated or promotional';
-  } else if (requests.length > 0) {
+  } else if (kind === 'event') {
+    reason = 'calendar update';
+  } else if (requests.length > 0 && (kind !== 'chat' || cues.dm || /\byou\b/i.test(item.body))) {
     bucket = 'needs_you';
     reason = 'contains a direct request';
   }
 
   // Learn from feedback: a sender whose tasks were rejected more often than confirmed
-  // no longer lands in needs_you.
-  if (bucket === 'needs_you') {
+  // no longer lands in needs_you (trusted signals still do).
+  if (bucket === 'needs_you' && reason === 'contains a direct request') {
     const sender = (item.fromAddress ?? item.fromName ?? '').toLowerCase();
     const fb = readFeedback(fences).filter((f) => (f.from ?? '').toLowerCase() === sender);
     const rejected = fb.filter((f) => f.verdict === 'rejected').length;
@@ -130,35 +219,57 @@ function fakeTriage(fences: Fence[], ref: string | null) {
     }
   }
 
-  const reply = bucket === 'needs_you' && expectsReply(item.body);
+  const reply = bucket === 'needs_you' && REPLYABLE.has(kind) && expectsReply(item.body);
+  const title = stripSubject(item.subject);
+  const firstLine = item.body.split('\n')[0]!.slice(0, 100);
   let summary: string;
-  if (bucket === 'needs_you') {
+  if (bucket === 'needs_you' && tracked && (cues.reviewRequested || cues.assigned)) {
+    const what = itemRef ? `${itemRef}` : 'this';
+    summary = cues.reviewRequested
+      ? `${who} requested your review on ${what}.`
+      : `Assigned to you.${cues.blocking ? ` ${capitalize(numWord(cues.blocking))} teammates are waiting on it.` : ''}`;
+  } else if (bucket === 'needs_you' && kind === 'event') {
+    summary = `${who} invited you to ${title || 'an event'}. RSVP needed.`;
+  } else if (bucket === 'needs_you' && requests.length > 0) {
     const first = requests[0]!;
-    const action = lowerFirst(actionPhrase(first) || stripSubject(item.subject));
+    const action = lowerFirst(actionPhrase(first) || title);
     const due = dueFor(first, item.body, ref);
     summary = `${who} asked you to ${action}${due ? ` ${due.phrase}` : ''}.`;
+  } else if (bucket === 'needs_you' && kind === 'chat') {
+    const q = sentences(item.body).find((x) => x.endsWith('?'));
+    summary = q ? `${who} asked: ${q}` : `${who} mentioned you: ${firstLine}`;
+  } else if (tracked || kind === 'chat' || kind === 'note' || kind === 'file') {
+    summary = firstLine || title;
   } else {
-    summary = stripSubject(item.subject) || item.body.split('\n')[0]!.slice(0, 100);
+    summary = title || firstLine;
   }
 
   let statusLabel: string | null = null;
-  const blocking =
-    /\bblock(?:ing|ed)\s+(\d+|two|three|four|five)\s+(people|folks|teams?|engineers|devs)\b/i.exec(
-      text,
-    );
   if (bucket === 'needs_you') {
-    statusLabel = blocking
-      ? `Blocking ${wordNum(blocking[1]!)} people`
-      : reply
-        ? 'Needs reply'
-        : 'Needs you';
+    statusLabel = cues.blocking
+      ? `Blocking ${cues.blocking} people`
+      : cues.reviewRequested
+        ? 'Review requested'
+        : cues.assigned
+          ? 'Assigned to you'
+          : cues.rsvpNeeded
+            ? 'RSVP needed'
+            : reply
+              ? 'Needs reply'
+              : cues.mention
+                ? 'Mentioned you'
+                : 'Needs you';
   } else if (bucket === 'fyi') statusLabel = 'FYI';
 
   return { bucket, summary: summary.slice(0, 200), statusLabel, expectsReply: reply, reason };
 }
 
+function numWord(n: number): string {
+  return ['zero', 'one', 'two', 'three', 'four', 'five', 'six'][n] ?? String(n);
+}
+
 function wordNum(s: string): number {
-  const w: Record<string, number> = { two: 2, three: 3, four: 4, five: 5 };
+  const w: Record<string, number> = { two: 2, three: 3, four: 4, five: 5, six: 6 };
   return w[s.toLowerCase()] ?? Number(s);
 }
 
@@ -169,10 +280,36 @@ function projectOf(item: ParsedItem): string | null {
   return q ?? null;
 }
 
-function fakeExtract(fences: Fence[], ref: string | null, promises: boolean) {
+function fakeExtract(fences: Fence[], ref: string | null, promises: boolean, facts: Facts) {
   const item = itemFence(fences);
   const who = firstName(item.fromName, item.fromAddress);
   const project = projectOf(item);
+  if (!promises) {
+    const cues = cuesFor(item, facts);
+    const itemRef = refFor(item, facts);
+    const title = stripSubject(item.subject);
+    let special: string | null = null;
+    if ((item.kind === 'ticket' || item.kind === 'code') && itemRef) {
+      if (cues.reviewRequested) special = `Review ${itemRef}`;
+      else if (cues.assigned) {
+        const rest = title.replace(itemRef, '').replace(/^[\s:·-]+/, '');
+        special = cues.blocking
+          ? `Unblock ${itemRef}`
+          : rest
+            ? `${itemRef}: ${rest}`
+            : `Work on ${itemRef}`;
+      }
+    } else if (item.kind === 'event' && cues.rsvpNeeded && title) {
+      special = `RSVP to ${title}`;
+    }
+    if (special) {
+      return {
+        tasks: [
+          { title: special.slice(0, 120), due: null, dueTime: null, project, confidence: 0.9 },
+        ],
+      };
+    }
+  }
   const source = promises
     ? promiseSentences(item.body)
     : isNoise(item)
@@ -258,6 +395,9 @@ function fakeReply(fences: Fence[], ref: string | null) {
         topic = `${stripSubject(item.subject) || capitalize(objectOf(action))} timeline`;
       }
     }
+  }
+  if (item.kind === 'chat') {
+    return { body: line.replace(/^Thanks for the note\. /, 'Thanks! '), topic: topic.slice(0, 60) };
   }
   const body = `Hi${who ? ` ${who}` : ''},\n\n${line}\n\nThanks`;
   return { body, topic: topic.slice(0, 60) };

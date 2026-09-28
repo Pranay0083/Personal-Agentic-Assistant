@@ -3,7 +3,7 @@ import OpenAI from 'openai';
 import { describe, expect, it, vi } from 'vitest';
 import { ModelConfigError, ModelProviderError, ModelRefusalError } from './errors';
 import { AnthropicProvider, type AnthropicClientLike } from './providers/anthropic';
-import { BedrockProvider, VertexProvider, defaultProviderFactory } from './providers/index';
+import { defaultProviderFactory } from './providers/index';
 import { OpenAICompatibleProvider, type OpenAIClientLike } from './providers/openai';
 
 const tool = {
@@ -253,23 +253,26 @@ describe('OpenAICompatibleProvider', () => {
   });
 });
 
-describe('Phase 5 placeholders', () => {
-  it('bedrock and vertex fail clearly', async () => {
-    const req = { model: 'x', system: '', messages: [] };
-    await expect(new BedrockProvider().generate(req)).rejects.toThrow(
-      /not configured yet \(Phase 5\)/,
-    );
-    await expect(new VertexProvider().generate(req)).rejects.toThrow(
-      /not configured yet \(Phase 5\)/,
-    );
-  });
-
+describe('defaultProviderFactory', () => {
   it('factory builds the right adapter per kind', () => {
     expect(defaultProviderFactory({ kind: 'anthropic', apiKey: 'k', config: {} }).kind).toBe(
       'anthropic',
     );
     expect(defaultProviderFactory({ kind: 'groq', apiKey: 'k', config: {} }).kind).toBe('groq');
-    expect(defaultProviderFactory({ kind: 'bedrock', config: {} }).kind).toBe('bedrock');
+    expect(
+      defaultProviderFactory({
+        kind: 'bedrock',
+        config: { region: 'us-east-1' },
+        production: false,
+      }).kind,
+    ).toBe('bedrock');
+    expect(
+      defaultProviderFactory({
+        kind: 'vertex',
+        config: { region: 'us-east5', projectId: 'my-project' },
+        production: false,
+      }).kind,
+    ).toBe('vertex');
     expect(defaultProviderFactory({ kind: 'fake', config: {} }).kind).toBe('fake');
   });
 
