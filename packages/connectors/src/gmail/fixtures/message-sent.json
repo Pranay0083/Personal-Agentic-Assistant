@@ -1,0 +1,95 @@
+{
+  "id": "192a7c3e5b1d0a03",
+  "threadId": "192a7c3e5b1d0a00",
+  "labelIds": ["SENT"],
+  "snippet": "Hi Morgan, I&#39;ll get you the signed MSA by end of day Wednesday. Alex",
+  "sizeEstimate": 2210,
+  "historyId": "1004",
+  "internalDate": "1790593800000",
+  "payload": {
+    "partId": "",
+    "mimeType": "multipart/alternative",
+    "filename": "",
+    "headers": [
+      {
+        "name": "MIME-Version",
+        "value": "1.0"
+      },
+      {
+        "name": "Date",
+        "value": "Mon, 28 Sep 2026 04:10:00 -0700"
+      },
+      {
+        "name": "References",
+        "value": "<msa-thread.7@client.example>"
+      },
+      {
+        "name": "In-Reply-To",
+        "value": "<msa-thread.7@client.example>"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<CAF=msa-reply.3@mail.gmail.com>"
+      },
+      {
+        "name": "Subject",
+        "value": "Re: MSA signature"
+      },
+      {
+        "name": "From",
+        "value": "Alex Chen <alex@company.example>"
+      },
+      {
+        "name": "To",
+        "value": "Morgan Diaz <morgan@client.example>"
+      },
+      {
+        "name": "Content-Type",
+        "value": "multipart/alternative; boundary=\"0000000000009f8e7d6c5b4a3921\""
+      }
+    ],
+    "body": {
+      "size": 0
+    },
+    "parts": [
+      {
+        "partId": "0",
+        "mimeType": "text/plain",
+        "filename": "",
+        "headers": [
+          {
+            "name": "Content-Type",
+            "value": "text/plain; charset=\"UTF-8\""
+          },
+          {
+            "name": "Content-Transfer-Encoding",
+            "value": "quoted-printable"
+          }
+        ],
+        "body": {
+          "size": 76,
+          "data": "SGkgTW9yZ2FuLA0KDQpJJ2xsIGdldCB5b3UgdGhlIHNpZ25lZCBNU0EgYnkgZW5kIG9mIGRheSBXZWRuZXNkYXkuDQoNCkFsZXgNCg"
+        }
+      },
+      {
+        "partId": "1",
+        "mimeType": "text/html",
+        "filename": "",
+        "headers": [
+          {
+            "name": "Content-Type",
+            "value": "text/html; charset=\"UTF-8\""
+          },
+          {
+            "name": "Content-Transfer-Encoding",
+            "value": "quoted-printable"
+          }
+        ],
+        "body": {
+          "size": 107,
+          "data": "PGRpdiBkaXI9Imx0ciI-SGkgTW9yZ2FuLDxicj48YnI-SSdsbCBnZXQgeW91IHRoZSBzaWduZWQgTVNBIGJ5IGVuZCBvZiBkYXkgV2VkbmVzZGF5Ljxicj48YnI-QWxleDxicj48L2Rpdj4"
+        }
+      }
+    ]
+  }
+}

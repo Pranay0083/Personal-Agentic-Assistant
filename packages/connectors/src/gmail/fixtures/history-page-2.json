@@ -1,0 +1,59 @@
+{
+  "history": [
+    {
+      "id": "1003",
+      "messages": [
+        {
+          "id": "192a7c3e5b1d0a02",
+          "threadId": "192a7c3e5b1d0a02"
+        }
+      ],
+      "messagesAdded": [
+        {
+          "message": {
+            "id": "192a7c3e5b1d0a02",
+            "threadId": "192a7c3e5b1d0a02",
+            "labelIds": ["CATEGORY_UPDATES", "INBOX", "UNREAD"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "1004",
+      "messages": [
+        {
+          "id": "192a7c3e5b1d0a03",
+          "threadId": "192a7c3e5b1d0a00"
+        }
+      ],
+      "messagesAdded": [
+        {
+          "message": {
+            "id": "192a7c3e5b1d0a03",
+            "threadId": "192a7c3e5b1d0a00",
+            "labelIds": ["SENT"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "1005",
+      "messages": [
+        {
+          "id": "192a7c3e5b1d0a01",
+          "threadId": "192a7c3e5b1d0a01"
+        }
+      ],
+      "messagesAdded": [
+        {
+          "message": {
+            "id": "192a7c3e5b1d0a01",
+            "threadId": "192a7c3e5b1d0a01",
+            "labelIds": ["IMPORTANT", "CATEGORY_PERSONAL", "INBOX"]
+          }
+        }
+      ]
+    }
+  ],
+  "historyId": "1005"
+}

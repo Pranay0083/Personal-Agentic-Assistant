@@ -1,0 +1,11 @@
+{
+  "message": {
+    "attributes": {},
+    "data": "eyJlbWFpbEFkZHJlc3MiOiJhbGV4QGNvbXBhbnkuZXhhbXBsZSIsImhpc3RvcnlJZCI6MTAwNn0=",
+    "messageId": "13862519468213717",
+    "message_id": "13862519468213717",
+    "publishTime": "2026-09-28T10:15:30.123Z",
+    "publish_time": "2026-09-28T10:15:30.123Z"
+  },
+  "subscription": "projects/hub-dev/subscriptions/gmail-push"
+}

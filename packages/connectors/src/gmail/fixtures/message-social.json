@@ -1,0 +1,56 @@
+{
+  "id": "192a8e0f11c2b303",
+  "threadId": "192a8e0f11c2b303",
+  "labelIds": ["CATEGORY_SOCIAL", "INBOX"],
+  "snippet": "Jamie Park commented on your post: &quot;Congrats on the launch!&quot;",
+  "sizeEstimate": 11873,
+  "historyId": "52003",
+  "internalDate": "1790584200000",
+  "payload": {
+    "partId": "",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+      {
+        "name": "Delivered-To",
+        "value": "alex.personal@gmail.example"
+      },
+      {
+        "name": "Received",
+        "value": "by 2002:a05:6a10:8c0f:b0:5c1:2f3a:1b2c with SMTP id x15csp1234567pxy; Mon, 28 Sep 2026 02:12:41 -0700 (PDT)"
+      },
+      {
+        "name": "MIME-Version",
+        "value": "1.0"
+      },
+      {
+        "name": "Date",
+        "value": "Mon, 28 Sep 2026 08:30:00 +0000"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<notif.77281@social.example>"
+      },
+      {
+        "name": "Subject",
+        "value": "Jamie Park commented on your post"
+      },
+      {
+        "name": "From",
+        "value": "Social Network <notify@social.example>"
+      },
+      {
+        "name": "To",
+        "value": "alex.personal@gmail.example"
+      },
+      {
+        "name": "Content-Type",
+        "value": "text/plain; charset=\"UTF-8\""
+      }
+    ],
+    "body": {
+      "size": 60,
+      "data": "SmFtaWUgUGFyayBjb21tZW50ZWQgb24geW91ciBwb3N0OiAiQ29uZ3JhdHMgb24gdGhlIGxhdW5jaCEi"
+    }
+  }
+}

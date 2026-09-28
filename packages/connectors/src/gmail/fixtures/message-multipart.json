@@ -1,0 +1,95 @@
+{
+  "id": "192a7c3e5b1d0a01",
+  "threadId": "192a7c3e5b1d0a01",
+  "labelIds": ["IMPORTANT", "CATEGORY_PERSONAL", "INBOX", "UNREAD"],
+  "snippet": "Hi Alex, Could you send me the Q3 roadmap slides by Thursday 5pm? I want to go through them before the leadership review on Friday. Thanks — Priya",
+  "sizeEstimate": 5321,
+  "historyId": "1001",
+  "internalDate": "1790586761000",
+  "payload": {
+    "partId": "",
+    "mimeType": "multipart/alternative",
+    "filename": "",
+    "headers": [
+      {
+        "name": "Delivered-To",
+        "value": "Alex Chen <alex@company.example>"
+      },
+      {
+        "name": "Received",
+        "value": "by 2002:a05:6a10:8c0f:b0:5c1:2f3a:1b2c with SMTP id x15csp1234567pxy; Mon, 28 Sep 2026 02:12:41 -0700 (PDT)"
+      },
+      {
+        "name": "MIME-Version",
+        "value": "1.0"
+      },
+      {
+        "name": "Date",
+        "value": "Mon, 28 Sep 2026 11:12:41 +0200"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<CAF=q3roadmap.1@mail.company.example>"
+      },
+      {
+        "name": "Subject",
+        "value": "Q3 roadmap slides by Thursday?"
+      },
+      {
+        "name": "From",
+        "value": "Priya Raman <priya@company.example>"
+      },
+      {
+        "name": "To",
+        "value": "Alex Chen <alex@company.example>"
+      },
+      {
+        "name": "Content-Type",
+        "value": "multipart/alternative; boundary=\"000000000000a1b2c3d4e5f60718\""
+      }
+    ],
+    "body": {
+      "size": 0
+    },
+    "parts": [
+      {
+        "partId": "0",
+        "mimeType": "text/plain",
+        "filename": "",
+        "headers": [
+          {
+            "name": "Content-Type",
+            "value": "text/plain; charset=\"UTF-8\""
+          },
+          {
+            "name": "Content-Transfer-Encoding",
+            "value": "quoted-printable"
+          }
+        ],
+        "body": {
+          "size": 156,
+          "data": "SGkgQWxleCwNCg0KQ291bGQgeW91IHNlbmQgbWUgdGhlIFEzIHJvYWRtYXAgc2xpZGVzIGJ5IFRodXJzZGF5IDVwbT8gSSB3YW50IHRvIGdvIHRocm91Z2ggdGhlbSBiZWZvcmUgdGhlIGxlYWRlcnNoaXAgcmV2aWV3IG9uIEZyaWRheS4NCg0KVGhhbmtzIOKAlCBQcml5YQ0K"
+        }
+      },
+      {
+        "partId": "1",
+        "mimeType": "text/html",
+        "filename": "",
+        "headers": [
+          {
+            "name": "Content-Type",
+            "value": "text/html; charset=\"UTF-8\""
+          },
+          {
+            "name": "Content-Transfer-Encoding",
+            "value": "quoted-printable"
+          }
+        ],
+        "body": {
+          "size": 197,
+          "data": "PGRpdiBkaXI9Imx0ciI-PHA-SGkgQWxleCw8L3A-PHA-Q291bGQgeW91IHNlbmQgbWUgdGhlIDxiPlEzIHJvYWRtYXAgc2xpZGVzPC9iPiBieSBUaHVyc2RheSA1cG0_IEkgd2FudCB0byBnbyB0aHJvdWdoIHRoZW0gYmVmb3JlIHRoZSBsZWFkZXJzaGlwIHJldmlldyBvbiBGcmlkYXkuPC9wPjxwPlRoYW5rcyDigJQgUHJpeWE8L3A-PC9kaXY-DQo"
+        }
+      }
+    ]
+  }
+}

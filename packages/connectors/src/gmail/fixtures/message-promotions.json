@@ -1,0 +1,60 @@
+{
+  "id": "192a8e0f11c2b302",
+  "threadId": "192a8e0f11c2b302",
+  "labelIds": ["CATEGORY_PROMOTIONS", "UNREAD", "INBOX"],
+  "snippet": "48 hours only: 40% off everything Use code FALL40 at checkout.",
+  "sizeEstimate": 25110,
+  "historyId": "52002",
+  "internalDate": "1790583600000",
+  "payload": {
+    "partId": "",
+    "mimeType": "text/html",
+    "filename": "",
+    "headers": [
+      {
+        "name": "Delivered-To",
+        "value": "alex.personal@gmail.example"
+      },
+      {
+        "name": "Received",
+        "value": "by 2002:a05:6a10:8c0f:b0:5c1:2f3a:1b2c with SMTP id x15csp1234567pxy; Mon, 28 Sep 2026 02:12:41 -0700 (PDT)"
+      },
+      {
+        "name": "MIME-Version",
+        "value": "1.0"
+      },
+      {
+        "name": "Date",
+        "value": "Mon, 28 Sep 2026 08:20:00 +0000"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<promo.fall40.99812@mailer.shoply.example>"
+      },
+      {
+        "name": "Subject",
+        "value": "48 hours only: 40% off everything"
+      },
+      {
+        "name": "From",
+        "value": "Shoply <deals@shoply.example>"
+      },
+      {
+        "name": "To",
+        "value": "alex.personal@gmail.example"
+      },
+      {
+        "name": "List-Unsubscribe",
+        "value": "<https://shoply.example/unsubscribe>"
+      },
+      {
+        "name": "Content-Type",
+        "value": "text/html; charset=\"UTF-8\""
+      }
+    ],
+    "body": {
+      "size": 170,
+      "data": "PGh0bWw-PGJvZHk-PGgxPjQ4IGhvdXJzIG9ubHk6IDQwJSBvZmYgZXZlcnl0aGluZzwvaDE-PHA-VXNlIGNvZGUgRkFMTDQwIGF0IGNoZWNrb3V0LjwvcD48cD48YSBocmVmPSJodHRwczovL3Nob3BseS5leGFtcGxlL3Vuc3Vic2NyaWJlIj5VbnN1YnNjcmliZTwvYT48L3A-PC9ib2R5PjwvaHRtbD4"
+    }
+  }
+}

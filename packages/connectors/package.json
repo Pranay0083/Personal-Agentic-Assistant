@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./gmail": "./src/gmail/index.ts"
+    "./gmail": "./src/gmail/index.ts",
+    "./gmail/fake": "./src/gmail/fake-entry.ts"
   },
   "scripts": {
     "typecheck": "tsc -p ."

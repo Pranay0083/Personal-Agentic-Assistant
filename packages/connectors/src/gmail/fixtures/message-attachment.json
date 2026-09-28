@@ -1,0 +1,134 @@
+{
+  "id": "192a7c3e5b1d0a04",
+  "threadId": "192a7c3e5b1d0a04",
+  "labelIds": ["INBOX", "Label_8231904417", "CATEGORY_PERSONAL"],
+  "snippet": "Hi Alex, Invoice INV-2291 for September is attached. Payment is due within 30 days. Best, Accounts team",
+  "sizeEstimate": 48211,
+  "historyId": "1005",
+  "internalDate": "1790597400000",
+  "payload": {
+    "partId": "",
+    "mimeType": "multipart/mixed",
+    "filename": "",
+    "headers": [
+      {
+        "name": "Delivered-To",
+        "value": "alex@company.example"
+      },
+      {
+        "name": "Received",
+        "value": "by 2002:a05:6a10:8c0f:b0:5c1:2f3a:1b2c with SMTP id x15csp1234567pxy; Mon, 28 Sep 2026 02:12:41 -0700 (PDT)"
+      },
+      {
+        "name": "MIME-Version",
+        "value": "1.0"
+      },
+      {
+        "name": "Date",
+        "value": "Mon, 28 Sep 2026 12:10:00 +0100"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<inv-2291.20260928@vendor.example>"
+      },
+      {
+        "name": "Subject",
+        "value": "Invoice INV-2291 (September)"
+      },
+      {
+        "name": "From",
+        "value": "Vendor Accounts <billing@vendor.example>"
+      },
+      {
+        "name": "To",
+        "value": "alex@company.example"
+      },
+      {
+        "name": "Content-Type",
+        "value": "multipart/mixed; boundary=\"00000000000011aa22bb33cc44dd\""
+      }
+    ],
+    "body": {
+      "size": 0
+    },
+    "parts": [
+      {
+        "partId": "0",
+        "mimeType": "multipart/alternative",
+        "filename": "",
+        "headers": [
+          {
+            "name": "Content-Type",
+            "value": "multipart/alternative; boundary=\"00000000000055ee66ff77aa88bb\""
+          }
+        ],
+        "body": {
+          "size": 0
+        },
+        "parts": [
+          {
+            "partId": "0.0",
+            "mimeType": "text/plain",
+            "filename": "",
+            "headers": [
+              {
+                "name": "Content-Type",
+                "value": "text/plain; charset=\"UTF-8\""
+              },
+              {
+                "name": "Content-Transfer-Encoding",
+                "value": "quoted-printable"
+              }
+            ],
+            "body": {
+              "size": 112,
+              "data": "SGkgQWxleCwNCg0KSW52b2ljZSBJTlYtMjI5MSBmb3IgU2VwdGVtYmVyIGlzIGF0dGFjaGVkLiBQYXltZW50IGlzIGR1ZSB3aXRoaW4gMzAgZGF5cy4NCg0KQmVzdCwNCkFjY291bnRzIHRlYW0NCg"
+            }
+          },
+          {
+            "partId": "0.1",
+            "mimeType": "text/html",
+            "filename": "",
+            "headers": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=\"UTF-8\""
+              },
+              {
+                "name": "Content-Transfer-Encoding",
+                "value": "quoted-printable"
+              }
+            ],
+            "body": {
+              "size": 125,
+              "data": "PHA-SGkgQWxleCw8L3A-PHA-SW52b2ljZSBJTlYtMjI5MSBmb3IgU2VwdGVtYmVyIGlzIGF0dGFjaGVkLiBQYXltZW50IGlzIGR1ZSB3aXRoaW4gMzAgZGF5cy48L3A-PHA-QmVzdCw8YnI-QWNjb3VudHMgdGVhbTwvcD4"
+            }
+          }
+        ]
+      },
+      {
+        "partId": "1",
+        "mimeType": "application/pdf",
+        "filename": "INV-2291.pdf",
+        "headers": [
+          {
+            "name": "Content-Type",
+            "value": "application/pdf; name=\"INV-2291.pdf\""
+          },
+          {
+            "name": "Content-Disposition",
+            "value": "attachment; filename=\"INV-2291.pdf\""
+          },
+          {
+            "name": "Content-Transfer-Encoding",
+            "value": "base64"
+          }
+        ],
+        "body": {
+          "attachmentId": "ANGjdJ8mZr3Qx1vYbW7kPpLtS0eHcFuN2oIaDgRsTqXyV5wEjMlKzUiO9h",
+          "size": 41277
+        }
+      }
+    ]
+  }
+}

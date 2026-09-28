@@ -1,0 +1,33 @@
+{
+  "history": [
+    {
+      "id": "1001",
+      "messages": [
+        {
+          "id": "192a7c3e5b1d0a01",
+          "threadId": "192a7c3e5b1d0a01"
+        }
+      ],
+      "messagesAdded": [
+        {
+          "message": {
+            "id": "192a7c3e5b1d0a01",
+            "threadId": "192a7c3e5b1d0a01",
+            "labelIds": ["IMPORTANT", "CATEGORY_PERSONAL", "INBOX", "UNREAD"]
+          }
+        }
+      ]
+    },
+    {
+      "id": "1002",
+      "messages": [
+        {
+          "id": "192a7c3e5b1d0a01",
+          "threadId": "192a7c3e5b1d0a01"
+        }
+      ]
+    }
+  ],
+  "nextPageToken": "07081928374651",
+  "historyId": "1005"
+}

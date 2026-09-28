@@ -1,0 +1,60 @@
+{
+  "id": "192a7c3e5b1d0a02",
+  "threadId": "192a7c3e5b1d0a02",
+  "labelIds": ["CATEGORY_UPDATES", "INBOX", "UNREAD"],
+  "snippet": "[HUB-142] Webhook retries double-send Jordan Blake assigned this issue to you. Priority: High Status: To Do Retries after a 5xx sent the same reply twice &amp; the customer noticed.",
+  "sizeEstimate": 9120,
+  "historyId": "1003",
+  "internalDate": "1790590200000",
+  "payload": {
+    "partId": "",
+    "mimeType": "text/html",
+    "filename": "",
+    "headers": [
+      {
+        "name": "Delivered-To",
+        "value": "alex@company.example"
+      },
+      {
+        "name": "Received",
+        "value": "by 2002:a05:6a10:8c0f:b0:5c1:2f3a:1b2c with SMTP id x15csp1234567pxy; Mon, 28 Sep 2026 02:12:41 -0700 (PDT)"
+      },
+      {
+        "name": "MIME-Version",
+        "value": "1.0"
+      },
+      {
+        "name": "Date",
+        "value": "Mon, 28 Sep 2026 10:10:00 +0000"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<JIRA.HUB-142.1790590200000@company.atlassian.example>"
+      },
+      {
+        "name": "Subject",
+        "value": "[JIRA] (HUB-142) Webhook retries double-send"
+      },
+      {
+        "name": "From",
+        "value": "\"Jordan Blake (Jira)\" <jira@company.atlassian.example>"
+      },
+      {
+        "name": "To",
+        "value": "alex@company.example"
+      },
+      {
+        "name": "Content-Type",
+        "value": "text/html; charset=UTF-8"
+      },
+      {
+        "name": "Content-Transfer-Encoding",
+        "value": "quoted-printable"
+      }
+    ],
+    "body": {
+      "size": 559,
+      "data": "PCFET0NUWVBFIGh0bWw-PGh0bWw-PGhlYWQ-PHN0eWxlPmJvZHl7Zm9udC1mYW1pbHk6QXJpYWx9IC5idG57Y29sb3I6I2ZmZn08L3N0eWxlPjwvaGVhZD48Ym9keT48aDI-W0hVQi0xNDJdIFdlYmhvb2sgcmV0cmllcyBkb3VibGUtc2VuZDwvaDI-PHA-Sm9yZGFuIEJsYWtlIDxiPmFzc2lnbmVkPC9iPiB0aGlzIGlzc3VlIHRvIHlvdS48L3A-PHRhYmxlPjx0cj48dGQ-UHJpb3JpdHk6PC90ZD48dGQ-SGlnaDwvdGQ-PC90cj48dHI-PHRkPlN0YXR1czo8L3RkPjx0ZD5UbyBEbzwvdGQ-PC90cj48L3RhYmxlPjxwPlJldHJpZXMgYWZ0ZXIgYSA1eHggc2VudCB0aGUgc2FtZSByZXBseSB0d2ljZSAmYW1wOyB0aGUgY3VzdG9tZXIgbm90aWNlZC4gV2UgbmVlZCBhbiBpZGVtcG90ZW5jeSBrZXkgJmx0O2JlZm9yZSZndDsgdGhlIG5leHQgcmVsZWFzZS48L3A-PHA-PGEgY2xhc3M9ImJ0biIgaHJlZj0iaHR0cHM6Ly9jb21wYW55LmF0bGFzc2lhbi5leGFtcGxlL2Jyb3dzZS9IVUItMTQyIj5WaWV3IGlzc3VlPC9hPjwvcD48c2NyaXB0PnRyYWNrKCk8L3NjcmlwdD48L2JvZHk-PC9odG1sPg"
+    }
+  }
+}

@@ -96,7 +96,11 @@ export interface Connector<Raw = unknown> {
       access: AccessKind;
       loginHint?: string;
     }): string;
-    exchange(opts: { code: string; redirectUri: string }): Promise<{
+    /**
+     * Pass `access` to have the connector check that the consent actually granted the
+     * scopes for that access kind (throws MissingScopeError otherwise).
+     */
+    exchange(opts: { code: string; redirectUri: string; access?: AccessKind }): Promise<{
       tokens: OAuthTokens;
       externalId: string;
       displayName: string | null;
@@ -113,6 +117,11 @@ export interface Connector<Raw = unknown> {
     opts: { days: number; pageToken?: string },
   ): Promise<BackfillPage<Raw>>;
   normalize(raw: Raw): NormalizedItem | null;
+  /**
+   * Whether a normalized item passes the account's read filters (Scope screen).
+   * Missing means "accept everything".
+   */
+  accepts?(item: NormalizedItem, filters: AccountFilters): boolean;
   /** Write actions. Used only by apps/workers/executor, with write-scope tokens. */
   execute?(
     ctx: ConnectorContext,

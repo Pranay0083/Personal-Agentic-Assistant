@@ -32,13 +32,22 @@ export function queue<T = unknown>(name: QueueName): Queue<T> {
   return q as Queue<T>;
 }
 
+/**
+ * BullMQ rejects custom job ids containing `:` (unless they have exactly three parts),
+ * so callers can use readable ids like `triage:<itemId>` and we normalize them here.
+ */
+export function safeJobId(jobId: string): string {
+  return jobId.replaceAll(':', '-');
+}
+
 /** Enqueue with an explicit jobId so duplicate enqueues collapse into one job. */
 export async function enqueue<T>(
   name: QueueName,
   data: T,
   opts: JobsOptions & { jobId?: string } = {},
 ) {
-  return (queue(name) as Queue).add(name, data, opts);
+  const jobId = opts.jobId === undefined ? undefined : safeJobId(opts.jobId);
+  return (queue(name) as Queue).add(name, data, { ...opts, jobId });
 }
 
 export function worker<T>(name: QueueName, processor: Processor<T>, concurrency = 5) {

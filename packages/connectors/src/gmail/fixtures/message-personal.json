@@ -1,0 +1,56 @@
+{
+  "id": "192a8e0f11c2b301",
+  "threadId": "192a8e0f11c2b301",
+  "labelIds": ["INBOX", "CATEGORY_PERSONAL", "UNREAD"],
+  "snippet": "Hey! Are we still on for dinner Saturday at 7? I can book the Thai place. Sam",
+  "sizeEstimate": 3102,
+  "historyId": "52001",
+  "internalDate": "1790580000000",
+  "payload": {
+    "partId": "",
+    "mimeType": "text/plain",
+    "filename": "",
+    "headers": [
+      {
+        "name": "Delivered-To",
+        "value": "alex.personal@gmail.example"
+      },
+      {
+        "name": "Received",
+        "value": "by 2002:a05:6a10:8c0f:b0:5c1:2f3a:1b2c with SMTP id x15csp1234567pxy; Mon, 28 Sep 2026 02:12:41 -0700 (PDT)"
+      },
+      {
+        "name": "MIME-Version",
+        "value": "1.0"
+      },
+      {
+        "name": "Date",
+        "value": "Mon, 28 Sep 2026 00:20:00 -0700"
+      },
+      {
+        "name": "Message-ID",
+        "value": "<CAB=dinner.sat@mail.gmail.com>"
+      },
+      {
+        "name": "Subject",
+        "value": "Dinner Saturday?"
+      },
+      {
+        "name": "From",
+        "value": "Sam Lee <sam.lee@gmail.example>"
+      },
+      {
+        "name": "To",
+        "value": "alex.personal@gmail.example"
+      },
+      {
+        "name": "Content-Type",
+        "value": "text/plain; charset=\"UTF-8\""
+      }
+    ],
+    "body": {
+      "size": 80,
+      "data": "SGV5ISBBcmUgd2Ugc3RpbGwgb24gZm9yIGRpbm5lciBTYXR1cmRheSBhdCA3PyBJIGNhbiBib29rIHRoZSBUaGFpIHBsYWNlLg0KDQpTYW0"
+    }
+  }
+}

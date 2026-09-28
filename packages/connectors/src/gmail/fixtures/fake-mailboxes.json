@@ -1,0 +1,23 @@
+{
+  "mailboxes": [
+    {
+      "email": "alex@company.example",
+      "displayName": "Alex Chen",
+      "nickname": "Work",
+      "historyId": "1000",
+      "messages": [
+        "message-multipart.json",
+        "message-html-only.json",
+        "message-sent.json",
+        "message-attachment.json"
+      ]
+    },
+    {
+      "email": "alex.personal@gmail.example",
+      "displayName": "Alex Chen",
+      "nickname": "Personal",
+      "historyId": "52000",
+      "messages": ["message-personal.json", "message-promotions.json", "message-social.json"]
+    }
+  ]
+}

@@ -11,3 +11,4 @@ apps/mobile/ios
 apps/mobile/android
 .turbo
 *.tsbuildinfo
+.dev/

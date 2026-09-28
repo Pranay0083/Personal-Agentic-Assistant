@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx watch --clear-screen=false src/main.ts",
     "start": "tsx src/main.ts",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "fake:email": "tsx scripts/fake-email.ts"
   },
   "dependencies": {
     "@hub/connectors": "workspace:*",
