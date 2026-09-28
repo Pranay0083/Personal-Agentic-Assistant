@@ -1,0 +1,155 @@
+{
+  "ok": true,
+  "query": "after:2026-09-26",
+  "messages": {
+    "total": 10,
+    "pagination": {
+      "total_count": 10,
+      "page": 2,
+      "per_page": 4,
+      "page_count": 3,
+      "first": 5,
+      "last": 8
+    },
+    "paging": {
+      "count": 4,
+      "total": 10,
+      "page": 2,
+      "pages": 3
+    },
+    "matches": [
+      {
+        "iid": "a1b2c3d4-1790595000000500",
+        "team": "T0ACME0001",
+        "score": 0,
+        "channel": {
+          "id": "C0GENERAL1",
+          "is_channel": true,
+          "is_group": false,
+          "is_im": false,
+          "is_mpim": false,
+          "is_private": false,
+          "is_shared": false,
+          "is_org_shared": false,
+          "is_ext_shared": false,
+          "is_pending_ext_shared": false,
+          "pending_shared": [],
+          "name": "general"
+        },
+        "type": "message",
+        "user": "U0ALEX0001",
+        "username": "alex",
+        "ts": "1790595000.000500",
+        "blocks": [
+          {
+            "type": "rich_text",
+            "block_id": "b0500",
+            "elements": []
+          }
+        ],
+        "text": "Standup moved to 10:30 in <#C0LAUNCH01|launch>",
+        "permalink": "https://acme-eng.slack.com/archives/C0GENERAL1/p1790595000000500",
+        "no_reactions": true
+      },
+      {
+        "iid": "a1b2c3d4-1790594000000600",
+        "team": "T0ACME0001",
+        "score": 0,
+        "channel": {
+          "id": "G0MPIM0001",
+          "is_channel": false,
+          "is_group": false,
+          "is_im": false,
+          "is_mpim": true,
+          "is_private": true,
+          "is_shared": false,
+          "is_org_shared": false,
+          "is_ext_shared": false,
+          "is_pending_ext_shared": false,
+          "pending_shared": [],
+          "name": "mpdm-alex--priya--sam-1"
+        },
+        "type": "message",
+        "user": "U0SAMLEE01",
+        "username": "sam",
+        "ts": "1790594000.000600",
+        "blocks": [
+          {
+            "type": "rich_text",
+            "block_id": "b0600",
+            "elements": []
+          }
+        ],
+        "text": "Moving our sync to 3pm, ok?",
+        "permalink": "https://acme-eng.slack.com/archives/G0MPIM0001/p1790594000000600",
+        "no_reactions": true
+      },
+      {
+        "iid": "a1b2c3d4-1790592000000700",
+        "team": "T0ACME0001",
+        "score": 0,
+        "channel": {
+          "id": "C0GENERAL1",
+          "is_channel": true,
+          "is_group": false,
+          "is_im": false,
+          "is_mpim": false,
+          "is_private": false,
+          "is_shared": false,
+          "is_org_shared": false,
+          "is_ext_shared": false,
+          "is_pending_ext_shared": false,
+          "pending_shared": [],
+          "name": "general"
+        },
+        "type": "message",
+        "user": "U0SAMLEE01",
+        "username": "sam",
+        "ts": "1790592000.000700",
+        "blocks": [
+          {
+            "type": "rich_text",
+            "block_id": "b0700",
+            "elements": []
+          }
+        ],
+        "text": "Older than the cursor",
+        "permalink": "https://acme-eng.slack.com/archives/C0GENERAL1/p1790592000000700",
+        "no_reactions": true
+      },
+      {
+        "iid": "a1b2c3d4-1790591000000800",
+        "team": "T0ACME0001",
+        "score": 0,
+        "channel": {
+          "id": "C0GENERAL1",
+          "is_channel": true,
+          "is_group": false,
+          "is_im": false,
+          "is_mpim": false,
+          "is_private": false,
+          "is_shared": false,
+          "is_org_shared": false,
+          "is_ext_shared": false,
+          "is_pending_ext_shared": false,
+          "pending_shared": [],
+          "name": "general"
+        },
+        "type": "message",
+        "user": "U0SAMLEE01",
+        "username": "sam",
+        "ts": "1790591000.000800",
+        "blocks": [
+          {
+            "type": "rich_text",
+            "block_id": "b0800",
+            "elements": []
+          }
+        ],
+        "text": "Much older",
+        "permalink": "https://acme-eng.slack.com/archives/C0GENERAL1/p1790591000000800",
+        "no_reactions": true
+      }
+    ]
+  }
+}

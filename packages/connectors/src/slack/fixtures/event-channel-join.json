@@ -1,0 +1,27 @@
+{
+  "token": "XXYYZZ",
+  "team_id": "T0ACME0001",
+  "api_app_id": "A0HUBAPP01",
+  "event": {
+    "type": "message",
+    "subtype": "channel_join",
+    "user": "U0SAMLEE01",
+    "text": "<@U0SAMLEE01> has joined the channel",
+    "ts": "1790596100.000100",
+    "channel": "C0GENERAL1",
+    "event_ts": "1790596100.000100",
+    "channel_type": "channel"
+  },
+  "type": "event_callback",
+  "event_id": "Ev0HUB00002",
+  "event_time": 1790596100,
+  "authorizations": [
+    {
+      "enterprise_id": null,
+      "team_id": "T0ACME0001",
+      "user_id": "U0ALEX0001",
+      "is_bot": false,
+      "is_enterprise_install": false
+    }
+  ]
+}

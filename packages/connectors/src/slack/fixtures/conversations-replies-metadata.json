@@ -1,0 +1,33 @@
+{
+  "ok": true,
+  "messages": [
+    {
+      "type": "message",
+      "user": "U0PRIYA001",
+      "text": "Parent",
+      "ts": "1790590000.000100",
+      "thread_ts": "1790590000.000100",
+      "reply_count": 2,
+      "team": "T0ACME0001"
+    },
+    {
+      "type": "message",
+      "user": "U0ALEX0001",
+      "text": "Posted from Hub in thread",
+      "ts": "1790596000.000900",
+      "thread_ts": "1790590000.000100",
+      "parent_user_id": "U0PRIYA001",
+      "team": "T0ACME0001",
+      "metadata": {
+        "event_type": "hub_action",
+        "event_payload": {
+          "key": "REPLACED_IN_TEST"
+        }
+      }
+    }
+  ],
+  "has_more": false,
+  "response_metadata": {
+    "next_cursor": ""
+  }
+}

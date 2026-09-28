@@ -1,0 +1,35 @@
+{
+  "ok": true,
+  "user": {
+    "id": "U0ALEX0001",
+    "team_id": "T0ACME0001",
+    "name": "alex",
+    "deleted": false,
+    "color": "9f69e7",
+    "real_name": "Alex Kim",
+    "tz": "Europe/London",
+    "tz_label": "British Summer Time",
+    "tz_offset": 3600,
+    "profile": {
+      "title": "",
+      "phone": "",
+      "skype": "",
+      "real_name": "Alex Kim",
+      "real_name_normalized": "Alex Kim",
+      "display_name": "Alex",
+      "display_name_normalized": "Alex",
+      "status_text": "",
+      "status_emoji": "",
+      "avatar_hash": "ge3b51ca72de",
+      "team": "T0ACME0001"
+    },
+    "is_admin": false,
+    "is_owner": false,
+    "is_primary_owner": false,
+    "is_restricted": false,
+    "is_ultra_restricted": false,
+    "is_bot": false,
+    "is_app_user": false,
+    "updated": 1790000000
+  }
+}

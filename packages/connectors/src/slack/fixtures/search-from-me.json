@@ -1,0 +1,89 @@
+{
+  "ok": true,
+  "query": "after:2026-09-26",
+  "messages": {
+    "total": 2,
+    "pagination": {
+      "total_count": 2,
+      "page": 1,
+      "per_page": 4,
+      "page_count": 1,
+      "first": 1,
+      "last": 2
+    },
+    "paging": {
+      "count": 4,
+      "total": 2,
+      "page": 1,
+      "pages": 1
+    },
+    "matches": [
+      {
+        "iid": "a1b2c3d4-1790596000000900",
+        "team": "T0ACME0001",
+        "score": 0,
+        "channel": {
+          "id": "C0LAUNCH01",
+          "is_channel": false,
+          "is_group": true,
+          "is_im": false,
+          "is_mpim": false,
+          "is_private": true,
+          "is_shared": false,
+          "is_org_shared": false,
+          "is_ext_shared": false,
+          "is_pending_ext_shared": false,
+          "pending_shared": [],
+          "name": "launch"
+        },
+        "type": "message",
+        "user": "U0ALEX0001",
+        "username": "alex",
+        "ts": "1790596000.000900",
+        "blocks": [
+          {
+            "type": "rich_text",
+            "block_id": "b0900",
+            "elements": []
+          }
+        ],
+        "text": "Posted from Hub in thread",
+        "permalink": "https://acme-eng.slack.com/archives/C0LAUNCH01/p1790596000000900?thread_ts=1790590000.000100&cid=C0LAUNCH01",
+        "no_reactions": true
+      },
+      {
+        "iid": "a1b2c3d4-1790595000000500",
+        "team": "T0ACME0001",
+        "score": 0,
+        "channel": {
+          "id": "C0GENERAL1",
+          "is_channel": true,
+          "is_group": false,
+          "is_im": false,
+          "is_mpim": false,
+          "is_private": false,
+          "is_shared": false,
+          "is_org_shared": false,
+          "is_ext_shared": false,
+          "is_pending_ext_shared": false,
+          "pending_shared": [],
+          "name": "general"
+        },
+        "type": "message",
+        "user": "U0ALEX0001",
+        "username": "alex",
+        "ts": "1790595000.000500",
+        "blocks": [
+          {
+            "type": "rich_text",
+            "block_id": "b0500",
+            "elements": []
+          }
+        ],
+        "text": "Standup moved",
+        "permalink": "https://acme-eng.slack.com/archives/C0GENERAL1/p1790595000000500",
+        "no_reactions": true
+      }
+    ]
+  }
+}

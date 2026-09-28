@@ -1,0 +1,12 @@
+{
+  "token": "XXYYZZ",
+  "team_id": "T0ACME0001",
+  "api_app_id": "A0HUBAPP01",
+  "event": {
+    "type": "app_uninstalled",
+    "event_ts": "1790596800.000000"
+  },
+  "type": "event_callback",
+  "event_id": "Ev0HUB00004",
+  "event_time": 1790596800
+}

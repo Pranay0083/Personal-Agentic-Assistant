@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "app_id": "A0HUBAPP01",
+  "authed_user": {
+    "id": "U0ALEX0001",
+    "scope": "channels:history,groups:history,im:history,mpim:history,channels:read,groups:read,im:read,mpim:read,users:read,search:read",
+    "access_token": "xoxe.xoxp-1-test-read-token",
+    "token_type": "user",
+    "refresh_token": "xoxe-1-test-refresh",
+    "expires_in": 43200
+  },
+  "team": {
+    "id": "T0ACME0001",
+    "name": "Acme Engineering"
+  },
+  "enterprise": null,
+  "is_enterprise_install": false
+}

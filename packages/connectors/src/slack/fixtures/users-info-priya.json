@@ -1,0 +1,35 @@
+{
+  "ok": true,
+  "user": {
+    "id": "U0PRIYA001",
+    "team_id": "T0ACME0001",
+    "name": "priya",
+    "deleted": false,
+    "color": "9f69e7",
+    "real_name": "Priya Raman",
+    "tz": "Europe/London",
+    "tz_label": "British Summer Time",
+    "tz_offset": 3600,
+    "profile": {
+      "title": "",
+      "phone": "",
+      "skype": "",
+      "real_name": "Priya Raman",
+      "real_name_normalized": "Priya Raman",
+      "display_name": "Priya",
+      "display_name_normalized": "Priya",
+      "status_text": "",
+      "status_emoji": "",
+      "avatar_hash": "ge3b51ca72de",
+      "team": "T0ACME0001"
+    },
+    "is_admin": false,
+    "is_owner": false,
+    "is_primary_owner": false,
+    "is_restricted": false,
+    "is_ultra_restricted": false,
+    "is_bot": false,
+    "is_app_user": false,
+    "updated": 1790000000
+  }
+}

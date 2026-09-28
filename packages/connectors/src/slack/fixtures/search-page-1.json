@@ -1,0 +1,156 @@
+{
+  "ok": true,
+  "query": "after:2026-09-26",
+  "messages": {
+    "total": 10,
+    "pagination": {
+      "total_count": 10,
+      "page": 1,
+      "per_page": 4,
+      "page_count": 3,
+      "first": 1,
+      "last": 4
+    },
+    "paging": {
+      "count": 4,
+      "total": 10,
+      "page": 1,
+      "pages": 3
+    },
+    "matches": [
+      {
+        "iid": "a1b2c3d4-1790596700000100",
+        "team": "T0ACME0001",
+        "score": 0,
+        "channel": {
+          "id": "C0LAUNCH01",
+          "is_channel": false,
+          "is_group": true,
+          "is_im": false,
+          "is_mpim": false,
+          "is_private": true,
+          "is_shared": false,
+          "is_org_shared": false,
+          "is_ext_shared": false,
+          "is_pending_ext_shared": false,
+          "pending_shared": [],
+          "name": "launch"
+        },
+        "type": "message",
+        "user": "U0PRIYA001",
+        "username": "priya",
+        "ts": "1790596700.000100",
+        "blocks": [
+          {
+            "type": "rich_text",
+            "block_id": "b0100",
+            "elements": []
+          }
+        ],
+        "text": "<@U0ALEX0001> can you confirm the checklist by Thursday? &lt;3",
+        "permalink": "https://acme-eng.slack.com/archives/C0LAUNCH01/p1790596700000100?thread_ts=1790590000.000100&cid=C0LAUNCH01",
+        "no_reactions": true
+      },
+      {
+        "iid": "a1b2c3d4-1790596600000200",
+        "team": "T0ACME0001",
+        "score": 0,
+        "channel": {
+          "id": "D0PRIYA001",
+          "is_channel": false,
+          "is_group": false,
+          "is_im": true,
+          "is_mpim": false,
+          "is_private": true,
+          "is_shared": false,
+          "is_org_shared": false,
+          "is_ext_shared": false,
+          "is_pending_ext_shared": false,
+          "pending_shared": [],
+          "name": "U0PRIYA001"
+        },
+        "type": "message",
+        "user": "U0PRIYA001",
+        "username": "priya",
+        "ts": "1790596600.000200",
+        "blocks": [
+          {
+            "type": "rich_text",
+            "block_id": "b0200",
+            "elements": []
+          }
+        ],
+        "text": "Could you review the Q3 slides? <https://docs.example/q3|Q3 deck>",
+        "permalink": "https://acme-eng.slack.com/archives/D0PRIYA001/p1790596600000200",
+        "no_reactions": true
+      },
+      {
+        "iid": "a1b2c3d4-1790596500000300",
+        "team": "T0ACME0001",
+        "score": 0,
+        "channel": {
+          "id": "C0GENERAL1",
+          "is_channel": true,
+          "is_group": false,
+          "is_im": false,
+          "is_mpim": false,
+          "is_private": false,
+          "is_shared": false,
+          "is_org_shared": false,
+          "is_ext_shared": false,
+          "is_pending_ext_shared": false,
+          "pending_shared": [],
+          "name": "general"
+        },
+        "type": "message",
+        "user": "U0DEPLOY01",
+        "username": "deploybot",
+        "ts": "1790596500.000300",
+        "blocks": [
+          {
+            "type": "rich_text",
+            "block_id": "b0300",
+            "elements": []
+          }
+        ],
+        "text": "Deployed api v2.14.0",
+        "permalink": "https://acme-eng.slack.com/archives/C0GENERAL1/p1790596500000300",
+        "no_reactions": true,
+        "bot_id": "B0DEPLOY01"
+      },
+      {
+        "iid": "a1b2c3d4-1790596400000400",
+        "team": "T0ACME0001",
+        "score": 0,
+        "channel": {
+          "id": "C0RANDOM01",
+          "is_channel": true,
+          "is_group": false,
+          "is_im": false,
+          "is_mpim": false,
+          "is_private": false,
+          "is_shared": false,
+          "is_org_shared": false,
+          "is_ext_shared": false,
+          "is_pending_ext_shared": false,
+          "pending_shared": [],
+          "name": "random"
+        },
+        "type": "message",
+        "user": "U0SAMLEE01",
+        "username": "sam",
+        "ts": "1790596400.000400",
+        "blocks": [
+          {
+            "type": "rich_text",
+            "block_id": "b0400",
+            "elements": []
+          }
+        ],
+        "text": "Anyone up for lunch?",
+        "permalink": "https://acme-eng.slack.com/archives/C0RANDOM01/p1790596400000400",
+        "no_reactions": true
+      }
+    ]
+  }
+}

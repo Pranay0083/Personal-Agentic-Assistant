@@ -1,0 +1,150 @@
+{
+  "_comment": "Synthetic seed for CONNECTORS_FAKE=1. minutesAgo becomes a Slack ts at seed time; threadOf points at the parent's minutesAgo in the same channel.",
+  "workspaces": [
+    {
+      "team": { "id": "T0ACME0001", "name": "Acme Engineering", "domain": "acme-eng" },
+      "selfUserId": "U0ALEX0001",
+      "users": [
+        { "id": "U0ALEX0001", "name": "alex", "real_name": "Alex Kim", "display_name": "Alex" },
+        {
+          "id": "U0PRIYA001",
+          "name": "priya",
+          "real_name": "Priya Raman",
+          "display_name": "Priya"
+        },
+        { "id": "U0SAMLEE01", "name": "sam", "real_name": "Sam Lee", "display_name": "" },
+        {
+          "id": "U0DEPLOY01",
+          "name": "deploybot",
+          "real_name": "Deploy Bot",
+          "display_name": "deploybot",
+          "is_bot": true
+        }
+      ],
+      "conversations": [
+        {
+          "id": "C0GENERAL1",
+          "name": "general",
+          "type": "channel",
+          "members": ["U0ALEX0001", "U0PRIYA001", "U0SAMLEE01", "U0DEPLOY01"]
+        },
+        {
+          "id": "C0LAUNCH01",
+          "name": "launch",
+          "type": "group",
+          "members": ["U0ALEX0001", "U0PRIYA001", "U0SAMLEE01"]
+        },
+        {
+          "id": "C0RANDOM01",
+          "name": "random",
+          "type": "channel",
+          "members": ["U0PRIYA001", "U0SAMLEE01"]
+        },
+        { "id": "D0PRIYA001", "name": null, "type": "im", "members": ["U0ALEX0001", "U0PRIYA001"] },
+        {
+          "id": "G0MPIM0001",
+          "name": "mpdm-alex--priya--sam-1",
+          "type": "mpim",
+          "members": ["U0ALEX0001", "U0PRIYA001", "U0SAMLEE01"]
+        }
+      ],
+      "messages": [
+        {
+          "channel": "C0GENERAL1",
+          "user": "U0PRIYA001",
+          "text": "Morning all, standup notes are in the doc.",
+          "minutesAgo": 1500
+        },
+        {
+          "channel": "C0GENERAL1",
+          "user": "U0DEPLOY01",
+          "bot_id": "B0DEPLOY01",
+          "subtype": "bot_message",
+          "text": "Deployed api v2.14.0 to staging",
+          "minutesAgo": 1400
+        },
+        {
+          "channel": "C0GENERAL1",
+          "user": "U0SAMLEE01",
+          "subtype": "channel_join",
+          "text": "<@U0SAMLEE01> has joined the channel",
+          "minutesAgo": 1300
+        },
+        {
+          "channel": "C0LAUNCH01",
+          "user": "U0PRIYA001",
+          "text": "<@U0ALEX0001> can you confirm the launch checklist by Thursday?",
+          "minutesAgo": 240
+        },
+        {
+          "channel": "C0LAUNCH01",
+          "user": "U0ALEX0001",
+          "text": "Yes, I'll have it done Wednesday.",
+          "minutesAgo": 230,
+          "threadOf": 240
+        },
+        {
+          "channel": "C0LAUNCH01",
+          "user": "U0SAMLEE01",
+          "text": "I can take the rollback section.",
+          "minutesAgo": 220,
+          "threadOf": 240
+        },
+        {
+          "channel": "C0RANDOM01",
+          "user": "U0SAMLEE01",
+          "text": "Anyone up for lunch?",
+          "minutesAgo": 200
+        },
+        {
+          "channel": "D0PRIYA001",
+          "user": "U0PRIYA001",
+          "text": "Could you review the Q3 slides before Friday?",
+          "minutesAgo": 90
+        },
+        {
+          "channel": "G0MPIM0001",
+          "user": "U0SAMLEE01",
+          "text": "Moving our sync to 3pm, ok?",
+          "minutesAgo": 60
+        }
+      ]
+    },
+    {
+      "team": { "id": "T0SIDE0001", "name": "Side Project", "domain": "side-project" },
+      "selfUserId": "U0ME000002",
+      "users": [
+        { "id": "U0ME000002", "name": "alex.k", "real_name": "Alex Kim", "display_name": "alex" },
+        {
+          "id": "U0JORDAN01",
+          "name": "jordan",
+          "real_name": "Jordan Ortiz",
+          "display_name": "Jordan"
+        }
+      ],
+      "conversations": [
+        {
+          "id": "C0BUILD001",
+          "name": "build",
+          "type": "channel",
+          "members": ["U0ME000002", "U0JORDAN01"]
+        },
+        { "id": "D0JORDAN01", "name": null, "type": "im", "members": ["U0ME000002", "U0JORDAN01"] }
+      ],
+      "messages": [
+        {
+          "channel": "C0BUILD001",
+          "user": "U0JORDAN01",
+          "text": "The build is green again after the cache fix.",
+          "minutesAgo": 600
+        },
+        {
+          "channel": "D0JORDAN01",
+          "user": "U0JORDAN01",
+          "text": "Can you send me the domain renewal invoice?",
+          "minutesAgo": 45
+        }
+      ]
+    }
+  ]
+}

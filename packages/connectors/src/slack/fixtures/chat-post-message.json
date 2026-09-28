@@ -1,0 +1,20 @@
+{
+  "ok": true,
+  "channel": "C0LAUNCH01",
+  "ts": "1790596800.001000",
+  "message": {
+    "type": "message",
+    "user": "U0ALEX0001",
+    "text": "Done, checklist confirmed.",
+    "ts": "1790596800.001000",
+    "thread_ts": "1790590000.000100",
+    "team": "T0ACME0001",
+    "app_id": "A0HUBAPP01",
+    "metadata": {
+      "event_type": "hub_action",
+      "event_payload": {
+        "key": "REPLACED_IN_TEST"
+      }
+    }
+  }
+}
