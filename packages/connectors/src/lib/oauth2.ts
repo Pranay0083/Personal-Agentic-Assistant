@@ -136,9 +136,21 @@ export async function accessToken(
   ctx: ConnectorContext,
   now = Date.now(),
 ): Promise<string> {
-  const t = ctx.tokens;
-  if (!t.expiresAt || t.expiresAt - now > 60_000) return t.accessToken;
-  const next = await refreshTokens(cfg, t);
+  const fresh = (t: OAuthTokens) => !t.expiresAt || t.expiresAt - now > 60_000;
+  if (fresh(ctx.tokens)) return ctx.tokens.accessToken;
+  let next: OAuthTokens;
+  try {
+    next = await refreshTokens(cfg, ctx.tokens);
+  } catch (err) {
+    // A sibling account sharing this grant may have rotated the refresh token first:
+    // use what it stored, or retry once with its refresh token, before giving up.
+    if (!(err instanceof ReconnectRequiredError) || !ctx.reloadTokens) throw err;
+    const stored = await ctx.reloadTokens();
+    if (stored.refreshToken === ctx.tokens.refreshToken) throw err;
+    ctx.tokens = stored;
+    if (fresh(stored)) return stored.accessToken;
+    next = await refreshTokens(cfg, stored);
+  }
   await ctx.saveTokens(next);
   ctx.tokens = next;
   return next.accessToken;

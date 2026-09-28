@@ -1,21 +1,42 @@
 # Gateway
 
-Receives provider webhooks at `POST /hooks/:provider`, verifies them with the provider's
-connector, maps the provider identity to every matching `accounts` row, inserts an `events`
-row per account (deduped on `provider_event_id`), enqueues `sync` for new events only and
-answers `204` right away. It does no provider calls and never touches message content.
+Receives provider webhooks at `/hooks/:provider` and `/hooks/:provider/:channel` (`POST`, and
+`GET` for providers that verify with one), verifies them with the provider's connector
+(`verifyWebhook` gets the method, headers, query, channel, parsed body and raw body), answers
+handshakes, maps each event to every matching account, inserts an `events` row per account
+(deduped on `provider_event_id`), enqueues `sync` for new events only and answers right away.
+It does no provider calls and never touches message content.
 
-| Route                 | Result                                                                 |
-| --------------------- | ---------------------------------------------------------------------- |
-| `GET /healthz`        | `200 {"ok":true}`                                                      |
-| `POST /hooks/gmail`   | `204` accepted (also for unknown addresses), `401` failed verification |
-| `POST /hooks/<other>` | `404` until that connector exists                                      |
+| Route                             | Result                                                                       |
+| --------------------------------- | ---------------------------------------------------------------------------- |
+| `GET /healthz`                    | `200 {"ok":true}`                                                            |
+| `POST /hooks/<provider>[/<chan>]` | `204` accepted (also for unknown accounts), `401` failed verification        |
+|                                   | or the connector's `reply` (e.g. Graph `validationToken` as `text/plain`,    |
+|                                   | Slack `url_verification` challenge as JSON) with its status and content type |
+| `/hooks/<unknown or unbuilt>`     | `404`                                                                        |
 
-Dedupe key: `gmail:<pubsub messageId>` for the oldest matching account, and
-`gmail:<messageId>:<accountId>` for any other account with the same address (the same
-mailbox connected by a second user). Redelivered pushes insert nothing and enqueue nothing.
-If enqueueing fails the event row is removed and the gateway answers `500`, so Pub/Sub's
-retry is not swallowed by dedupe.
+**Routing.** Each event names its account(s) with exactly one of:
+
+- `externalAccountId` → `accounts(provider, external_id)` (the Gmail address);
+- `routeKey` → accounts of that provider whose `route_keys` contain it (Slack team id, GitHub
+  installation id, Atlassian cloud id);
+- `externalSubId` → the `subscriptions` row with that id; its `kind` is the source to sync.
+
+Disconnected accounts and disabled sources never match. The sync job carries the source
+(`{accountId, source?, eventId, reason: 'webhook'}`); without one the account's enabled
+sources all sync.
+
+**Subscription secrets.** If an event carries `subscriptionSecret` (Graph `clientState`,
+Google `X-Goog-Channel-Token`), `sha256(secret)` is compared in constant time with the matched
+subscription's `meta.secretHash` (for `externalAccountId`/`routeKey` events, the account's row
+for `event.source`). A subscription that stored a hash also refuses events without a secret.
+Mismatches are dropped and logged with ids only.
+
+Dedupe key: `<provider>:<event id>` for the oldest matching account, and
+`<provider>:<event id>:<accountId>` for any other account it maps to (the same mailbox
+connected by a second user, two users in one Slack workspace). Redelivered events insert
+nothing and enqueue nothing. If enqueueing fails the event row is removed and the gateway
+answers `500`, so the provider's retry is not swallowed by dedupe.
 
 Run it with `pnpm dev` (all services) or `pnpm --filter @hub/gateway dev` (port `GATEWAY_PORT`, default 4001).
 

@@ -1,10 +1,18 @@
-import { and, eq, isNull } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { Connector, ConnectorContext, SubscriptionInfo } from '@hub/connectors';
-import { accounts, audit, subscriptions } from '@hub/db';
-import type { AccountRow } from './context';
-import type { WorkerDeps } from './deps';
-
-export const watchKind = (provider: string) => `${provider}.watch`;
+import { accounts, audit } from '@hub/db';
+import {
+  clearSubscription,
+  ensureSourceRow,
+  isSubscribed,
+  loadSources,
+  refreshContext,
+  saveSubscription,
+  sourcesOf,
+  type AccountRow,
+  type SourceRow,
+} from './context';
+import { errInfo, type WorkerDeps } from './deps';
 
 /** Token is revoked/expired for good: flag the account and tell the app. No retry. */
 export async function markReconnect(
@@ -27,7 +35,7 @@ export async function setStatus(
   deps: Pick<WorkerDeps, 'db' | 'publishLive'>,
   account: AccountRow,
   status: string,
-  extra: Partial<Pick<AccountRow, 'lastSyncedAt' | 'syncCursor'>> = {},
+  extra: Partial<Pick<AccountRow, 'lastSyncedAt'>> = {},
 ) {
   const changed = account.status !== status;
   await deps.db
@@ -40,45 +48,68 @@ export async function setStatus(
 }
 
 /**
- * Makes sure the provider push subscription exists and is not expired. On first
- * subscribe the returned cursor (Gmail historyId) becomes the account's sync cursor;
- * an existing cursor is never overwritten (that would skip mail).
+ * Makes sure one source's subscription row exists and is subscribed and not expired.
+ * Sources without push get a row too (externalSubId null) that holds the cursor. On first
+ * subscribe the returned cursor becomes the source's cursor; an existing cursor is never
+ * overwritten (that would skip changes). `ctx` must be for `row.kind`; it is updated.
  */
 export async function ensureSubscription(
   deps: Pick<WorkerDeps, 'db' | 'now'>,
-  account: AccountRow,
   connector: Connector,
   ctx: ConnectorContext,
+  row: SourceRow,
   opts: { force?: boolean } = {},
-): Promise<{ changed: boolean; info?: SubscriptionInfo }> {
-  const kind = watchKind(account.provider);
-  const [sub] = await deps.db
-    .select()
-    .from(subscriptions)
-    .where(and(eq(subscriptions.accountId, account.id), eq(subscriptions.kind, kind)));
+): Promise<{ changed: boolean; renewed: boolean; info?: SubscriptionInfo }> {
   const now = deps.now();
-  if (sub && !opts.force && (!sub.expiresAt || sub.expiresAt > now)) return { changed: false };
-  const info = sub ? await connector.renew(ctx) : await connector.subscribe(ctx);
-  await deps.db
-    .insert(subscriptions)
-    .values({
-      accountId: account.id,
-      kind,
-      externalSubId: info.externalSubId,
-      expiresAt: info.expiresAt,
-      updatedAt: now,
-    })
-    .onConflictDoUpdate({
-      target: [subscriptions.accountId, subscriptions.kind],
-      set: { externalSubId: info.externalSubId, expiresAt: info.expiresAt, updatedAt: now },
-    });
-  if (!account.syncCursor && info.cursor) {
-    await deps.db
-      .update(accounts)
-      .set({ syncCursor: info.cursor })
-      .where(and(eq(accounts.id, account.id), isNull(accounts.syncCursor)));
-    account.syncCursor = info.cursor;
-    ctx.cursor = info.cursor;
+  const subscribed = isSubscribed(row);
+  if (subscribed && !opts.force && (!row.expiresAt || row.expiresAt > now)) {
+    return { changed: false, renewed: false };
   }
-  return { changed: true, info };
+  refreshContext(ctx, row);
+  const info = subscribed ? await connector.renew(ctx) : await connector.subscribe(ctx);
+  await saveSubscription(deps.db, row, info, now);
+  refreshContext(ctx, row);
+  return { changed: true, renewed: subscribed, info };
+}
+
+/** The source row for `source`, created if missing. */
+export async function sourceRow(
+  deps: Pick<WorkerDeps, 'db' | 'now'>,
+  account: AccountRow,
+  source: string,
+): Promise<SourceRow> {
+  return ensureSourceRow(deps.db, account.id, source, deps.now());
+}
+
+/**
+ * Sources that are no longer enabled (toggled off, or no longer granted) get `enabled=false`
+ * and, if they were subscribed, `connector.unsubscribe`. Unsubscribe failures are logged and
+ * the row is still disabled: the gateway drops notifications for disabled sources.
+ */
+export async function disableRemovedSources(
+  deps: Pick<WorkerDeps, 'db' | 'now' | 'log'>,
+  connector: Connector,
+  account: AccountRow,
+  ctxFor: (row: SourceRow) => Promise<ConnectorContext>,
+): Promise<string[]> {
+  const enabled = new Set(sourcesOf(connector, account));
+  const rows = await loadSources(deps.db, account.id);
+  const disabled: string[] = [];
+  for (const row of rows) {
+    if (enabled.has(row.kind)) continue;
+    if (!row.enabled && !isSubscribed(row)) continue;
+    if (isSubscribed(row) && connector.unsubscribe) {
+      try {
+        await connector.unsubscribe(await ctxFor(row));
+      } catch (e) {
+        deps.log.warn(
+          { accountId: account.id, source: row.kind, ...errInfo(e) },
+          'unsubscribe failed',
+        );
+      }
+    }
+    await clearSubscription(deps.db, row, deps.now());
+    disabled.push(row.kind);
+  }
+  return disabled;
 }

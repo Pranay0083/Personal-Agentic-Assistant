@@ -189,7 +189,7 @@ export function BackLink({
   fallback = '/control' as const,
 }: {
   label?: string;
-  fallback?: '/control' | '/' | '/inbox';
+  fallback?: '/control' | '/' | '/inbox' | '/connectors';
 }) {
   return (
     <Pressable

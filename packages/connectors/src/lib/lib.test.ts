@@ -90,6 +90,33 @@ describe('oauth2', () => {
     expect(calls).toHaveLength(0);
   });
 
+  it('recovers when a sibling account rotated the shared refresh token first', async () => {
+    // Sibling already refreshed: the stored token is fresh, so no second refresh is needed.
+    const stored = { accessToken: 'sibling', refreshToken: 'r2', expiresAt: Date.now() + 3600_000 };
+    const { fetch: f2 } = mockFetch({
+      'POST /token': { status: 400, body: { error: 'invalid_grant' } },
+    });
+    const ctx = {
+      tokens: { accessToken: 'old', refreshToken: 'r1', expiresAt: Date.now() - 1 },
+      saveTokens: async () => {},
+      reloadTokens: async () => stored,
+    } as unknown as ConnectorContext;
+    expect(await accessToken(cfg(f2), ctx)).toBe('sibling');
+  });
+
+  it('still reports reconnect when the stored token is the same one that failed', async () => {
+    const { fetch } = mockFetch({
+      'POST /token': { status: 400, body: { error: 'invalid_grant' } },
+    });
+    const t = { accessToken: 'old', refreshToken: 'r1', expiresAt: Date.now() - 1 };
+    const ctx = {
+      tokens: t,
+      saveTokens: async () => {},
+      reloadTokens: async () => ({ ...t }),
+    } as unknown as ConnectorContext;
+    await expect(accessToken(cfg(fetch), ctx)).rejects.toBeInstanceOf(ReconnectRequiredError);
+  });
+
   it('maps invalid_grant to reconnect', async () => {
     const { fetch } = mockFetch({
       'POST /token': { status: 400, body: { error: 'invalid_grant' } },

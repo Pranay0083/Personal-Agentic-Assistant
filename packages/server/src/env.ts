@@ -55,6 +55,8 @@ const EnvSchema = z.object({
   /** Google Workspace Events API → Pub/Sub topic for Google Chat message events. */
   GOOGLE_EVENTS_PUBSUB_TOPIC: z.string().optional(),
   GOOGLE_EVENTS_PUBSUB_AUDIENCE: z.string().optional(),
+  /** Service account the Workspace Events push signs as (defaults to GMAIL_PUBSUB_SERVICE_ACCOUNT). */
+  GOOGLE_EVENTS_PUBSUB_SERVICE_ACCOUNT: z.string().optional(),
 
   /** 1 = every connector serves recorded fixtures (demo mode). Refused in production. */
   CONNECTORS_FAKE: bool,
@@ -62,10 +64,18 @@ const EnvSchema = z.object({
   MS_CLIENT_ID: z.string().optional(),
   MS_CLIENT_SECRET: z.string().optional(),
   MS_TENANT: z.string().default('common'),
+  /** Optional second Entra app used only for the Mail.Send consent (keeps read tokens read-only). */
+  MS_WRITE_CLIENT_ID: z.string().optional(),
+  MS_WRITE_CLIENT_SECRET: z.string().optional(),
+  /** 1 = offer the Teams channel-messages source (ChannelMessage.Read.All needs admin consent). */
+  MS_CHANNEL_MESSAGES: bool,
 
   SLACK_CLIENT_ID: z.string().optional(),
   SLACK_CLIENT_SECRET: z.string().optional(),
   SLACK_SIGNING_SECRET: z.string().optional(),
+  /** Optional second Slack app used only for the chat:write consent (keeps read tokens read-only). */
+  SLACK_WRITE_CLIENT_ID: z.string().optional(),
+  SLACK_WRITE_CLIENT_SECRET: z.string().optional(),
 
   ATLASSIAN_CLIENT_ID: z.string().optional(),
   ATLASSIAN_CLIENT_SECRET: z.string().optional(),
@@ -97,6 +107,15 @@ export function productionProblems(e: Env): string[] {
   if (e.DEV_AUTH) out.push('DEV_AUTH must be off');
   if (e.GMAIL_FAKE) out.push('GMAIL_FAKE must be off');
   if (e.CONNECTORS_FAKE) out.push('CONNECTORS_FAKE must be off');
+  for (const k of [
+    'MS_FAKE',
+    'SLACK_FAKE',
+    'ATLASSIAN_FAKE',
+    'NOTION_FAKE',
+    'GITHUB_FAKE',
+  ] as const) {
+    if (process.env[k] === '1' || process.env[k] === 'true') out.push(`${k} must be off`);
+  }
   if (e.MODEL_PROVIDER === 'fake') out.push('MODEL_PROVIDER=fake is not allowed');
   if (e.PUSH_FAKE) out.push('PUSH_FAKE must be off');
   if (e.SECRETS_PROVIDER === 'local') out.push('SECRETS_PROVIDER=local is not allowed');

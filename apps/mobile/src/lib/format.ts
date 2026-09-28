@@ -1,72 +1,83 @@
 import type { Provider } from '@hub/shared';
 import type { AccountT, ItemT, PolicyLevelT } from './types';
 
-export type ServiceInfo = {
-  provider: Provider;
+type ProviderMeta = {
+  /** Fallback display name; the catalog from GET /connectors wins when it is loaded. */
   name: string;
-  covers: string;
-  /** Shorter "covers" text for the Connectors screen group header. */
-  coversShort: string;
-  available: boolean;
+  /** What one connection is called ("Added 2 Atlassian sites"). */
+  unit: [one: string, many: string];
 };
 
-/** Services shown on Connect and Connectors, in design order. Only Google is wired up today. */
-export const SERVICES: ServiceInfo[] = [
-  {
-    provider: 'gmail',
-    name: 'Google',
-    covers: 'Gmail, Calendar, Drive · one sign-in each',
-    coversShort: 'Gmail, Calendar, Drive',
-    available: true,
-  },
-  {
-    provider: 'microsoft',
-    name: 'Microsoft 365',
-    covers: 'Outlook, Teams, OneDrive',
-    coversShort: 'Outlook, Teams, OneDrive',
-    available: false,
-  },
-  {
-    provider: 'slack',
-    name: 'Slack',
-    covers: 'One per workspace',
-    coversShort: 'per workspace',
-    available: false,
-  },
-  {
-    provider: 'atlassian',
-    name: 'Atlassian',
-    covers: 'Jira, Confluence · per site',
-    coversShort: 'Jira, Confluence',
-    available: false,
-  },
-  {
-    provider: 'notion',
-    name: 'Notion',
-    covers: 'Only pages you pick',
-    coversShort: 'pages you picked',
-    available: false,
-  },
-  {
-    provider: 'github',
-    name: 'GitHub',
-    covers: 'Only repos you pick',
-    coversShort: 'repos you picked',
-    available: false,
-  },
-];
+/**
+ * Display-only names per provider, used where the connector catalog isn't at hand (source
+ * tags, Permissions, item detail). Which services exist and whether they're available comes
+ * from GET /connectors, never from here.
+ */
+export const PROVIDER_META: Record<Provider, ProviderMeta> = {
+  gmail: { name: 'Google', unit: ['account', 'accounts'] },
+  microsoft: { name: 'Microsoft 365', unit: ['account', 'accounts'] },
+  slack: { name: 'Slack', unit: ['workspace', 'workspaces'] },
+  atlassian: { name: 'Atlassian', unit: ['site', 'sites'] },
+  notion: { name: 'Notion', unit: ['workspace', 'workspaces'] },
+  github: { name: 'GitHub', unit: ['account', 'accounts'] },
+};
 
 export const MAX_ACCOUNTS_PER_SERVICE = 4;
 
+function meta(p: string): ProviderMeta | undefined {
+  return (PROVIDER_META as Record<string, ProviderMeta | undefined>)[p];
+}
+
 export function serviceName(p: Provider | string): string {
-  return SERVICES.find((s) => s.provider === p)?.name ?? p;
+  return meta(p)?.name ?? p;
+}
+
+/** "site" / "sites" for Atlassian, "workspace" for Slack, "account" otherwise. */
+export function accountUnit(p: Provider | string, n: number): string {
+  const u = meta(p)?.unit ?? ['account', 'accounts'];
+  return n === 1 ? u[0] : u[1];
+}
+
+/** Product name for an item, e.g. "Teams" for a Microsoft chat ("Open in Teams"). */
+export function productName(provider: string | null | undefined, kind?: string | null): string {
+  switch (provider) {
+    case 'gmail':
+      return kind === 'event'
+        ? 'Google Calendar'
+        : kind === 'file'
+          ? 'Google Drive'
+          : kind === 'chat'
+            ? 'Google Chat'
+            : 'Gmail';
+    case 'microsoft':
+      return kind === 'chat'
+        ? 'Teams'
+        : kind === 'file'
+          ? 'OneDrive'
+          : kind === 'event'
+            ? 'Outlook Calendar'
+            : 'Outlook';
+    case 'atlassian':
+      return kind === 'note' ? 'Confluence' : 'Jira';
+    case null:
+    case undefined:
+      return 'browser';
+    default:
+      return serviceName(provider);
+  }
 }
 
 /** Source tag text for an item or task, e.g. GMAIL, TEAMS, JIRA. */
 export function sourceLabel(provider: string | null | undefined, kind?: string | null): string {
   switch (provider) {
     case 'gmail':
-      return kind === 'event' ? 'CALENDAR' : kind === 'file' ? 'DRIVE' : 'GMAIL';
+      return kind === 'event'
+        ? 'CALENDAR'
+        : kind === 'file'
+          ? 'DRIVE'
+          : kind === 'chat'
+            ? 'CHAT'
+            : 'GMAIL';
     case 'microsoft':
       return kind === 'chat'
         ? 'TEAMS'
@@ -83,15 +94,45 @@ export function sourceLabel(provider: string | null | undefined, kind?: string |
       return 'NOTION';
     case 'github':
       return 'GITHUB';
+    // A task's `source` may already name the product.
+    case 'gchat':
+      return 'CHAT';
+    case 'gcal':
+    case 'mscal':
+      return 'CALENDAR';
+    case 'gdrive':
+      return 'DRIVE';
     case null:
     case undefined:
+    case '':
       return kind ? kind.toUpperCase() : 'HUB';
     default:
       return provider.toUpperCase();
   }
 }
 
-/** "GMAIL · WORK" style tag for an item, using its account. */
+/** Permissions row name per provider and resource ("Google Chat", "OneDrive", "Jira"). */
+const PERMISSION_LABEL: Record<string, Record<string, string>> = {
+  gmail: { email: 'Gmail', chat: 'Google Chat', calendar: 'Calendar', files: 'Drive' },
+  microsoft: { email: 'Outlook', chat: 'Teams', calendar: 'Outlook Calendar', files: 'OneDrive' },
+  slack: { chat: 'Slack', files: 'Slack files' },
+  atlassian: { tickets: 'Jira', notes: 'Confluence' },
+  notion: { notes: 'Notion' },
+  github: { code: 'GitHub', tickets: 'GitHub issues' },
+};
+
+const DATA_RESOURCES = new Set(['email', 'chat', 'tickets', 'notes', 'calendar', 'files', 'code']);
+
+/** Null for action resources and provider-less rows (the caller keeps its own label). */
+export function permissionLabel(provider: string | null, resource: string): string | null {
+  if (!provider || !DATA_RESOURCES.has(resource)) return null;
+  return PERMISSION_LABEL[provider]?.[resource] ?? serviceName(provider);
+}
+
+/**
+ * "GMAIL · WORK" style tag for an item. Pass `withAccount` when the user has more than one
+ * account of that provider, so the nickname tells them apart.
+ */
 export function itemTag(item: ItemT, account: AccountT | undefined, withAccount = true): string {
   const src = sourceLabel(account?.provider, item.kind);
   return withAccount && account ? `${src} · ${account.nickname.toUpperCase()}` : src;
@@ -253,4 +294,36 @@ export function slotLabel(dueAt: string | null, now = new Date()): string {
   if (diff === 1) return 'Tmrw';
   if (diff < 7) return DAYS[d.getDay()] ?? '';
   return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+}
+
+/** Row copy for the separate write-access consent, from the catalog's `writeActions`. */
+export function writeAccessCopy(
+  actions: readonly string[],
+): { label: string; noun: string; what: string } | null {
+  const sends = actions.some(
+    (a) => a === 'gmail.send' || a === 'outlook.send' || a === 'slack.post',
+  );
+  const tickets = actions.some((a) => a.startsWith('jira.'));
+  if (sends)
+    return {
+      label: 'Allow sending',
+      noun: 'Sending',
+      what: actions.includes('slack.post') ? 'post messages' : 'send email',
+    };
+  if (tickets)
+    return { label: 'Allow ticket updates', noun: 'Ticket updates', what: 'update tickets' };
+  if (actions.length) return { label: 'Allow changes', noun: 'Changes', what: 'make changes' };
+  return null;
+}
+
+/** Catalog `covers` plus the multi-account note when it adds something ("One per workspace"). */
+export function coversText(covers: string, note: string | null): string {
+  if (!note || covers.toLowerCase().includes(note.toLowerCase())) return covers;
+  return covers ? `${covers} · ${note}` : note;
+}
+
+/** Shorter covers text for the Connectors group header ("Gmail, Calendar, Drive"). */
+export function coversShort(covers: string, note: string | null): string {
+  const first = covers.split(' · ')[0]?.trim();
+  return first || note || '';
 }

@@ -138,6 +138,7 @@ export const UpdateAccountReq = z
 export const ItemsQuery = z.object({
   accountId: z.uuid().optional(),
   kind: ItemKind.optional(),
+  provider: Provider.optional(),
   bucket: ItemBucket.optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),

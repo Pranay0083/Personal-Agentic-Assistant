@@ -1,9 +1,20 @@
+import { useMemo } from 'react';
 import { View } from 'react-native';
 import { router } from 'expo-router';
 import { useMeRequired } from '@/lib/auth';
-import { useToday } from '@/lib/queries';
+import { useAccounts, useEvents, useToday } from '@/lib/queries';
 import { useAccountMap, useNow } from '@/lib/hooks';
-import { agoShort, dateHeader, greeting, hhmm, itemTag, shortTime, slotLabel } from '@/lib/format';
+import {
+  agoShort,
+  dateHeader,
+  greeting,
+  hhmm,
+  hhmm2,
+  itemTag,
+  shortTime,
+  slotLabel,
+} from '@/lib/format';
+import { durationText, todaysEvents } from '@/lib/calendar';
 import { colors } from '@/theme';
 import { Label, Title, Txt } from '@/components/Txt';
 import { Card, Dot, LinkButton, Row, SourceTag } from '@/components/ui';
@@ -16,6 +27,16 @@ export default function TodayScreen() {
   const accounts = useAccountMap();
   const ask = useAsk();
   const now = useNow();
+  // Calendar items only come from Google and Microsoft accounts.
+  const accountList = useAccounts().data?.accounts;
+  const hasCalendar = !!accountList?.some(
+    (a) => a.provider === 'gmail' || a.provider === 'microsoft',
+  );
+  const eventsQ = useEvents(hasCalendar);
+  const events = useMemo(
+    () => (eventsQ.data ? todaysEvents(eventsQ.data.items, new Date(now)) : []),
+    [eventsQ.data, now],
+  );
 
   const data = today.data;
   const synced = data?.lastSyncedAt;
@@ -173,7 +194,32 @@ export default function TodayScreen() {
             <Txt size={15} weight={600} accessibilityRole="header">
               Next up
             </Txt>
-            {data!.nextUp.length === 0 ? (
+            {events.length ? (
+              <View style={{ gap: 8 }}>
+                {events.map((e) => {
+                  const dur = durationText(e);
+                  return (
+                    <View
+                      key={e.id}
+                      style={{ flexDirection: 'row', gap: 14, alignItems: 'center', minHeight: 24 }}
+                    >
+                      <Txt
+                        mono
+                        size={12}
+                        color={colors.teal}
+                        style={{ width: events.some((x) => x.allDay) ? 56 : 44 }}
+                        numberOfLines={1}
+                      >
+                        {e.allDay ? 'All day' : hhmm2(e.start)}
+                      </Txt>
+                      <Txt size={14} style={{ flex: 1 }} numberOfLines={1}>
+                        {dur ? `${e.title} · ${dur}` : e.title}
+                      </Txt>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : data!.nextUp.length === 0 ? (
               <Txt size={14} color={colors.secondary}>
                 No tasks due soon.
               </Txt>

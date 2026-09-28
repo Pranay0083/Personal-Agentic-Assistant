@@ -85,6 +85,7 @@ function Root({ fontsReady }: { fontsReady: boolean }) {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="item/[id]" />
         <Stack.Screen name="connectors" />
+        <Stack.Screen name="account/[id]" />
         <Stack.Screen name="permissions" />
         <Stack.Screen name="models" />
         <Stack.Screen name="connected-agents" />

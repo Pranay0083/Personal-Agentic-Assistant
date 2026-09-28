@@ -12,7 +12,13 @@ import {
 } from '@hub/db';
 import { itemBodyContext, seal } from '@hub/server/secrets';
 import { QUEUES } from '@hub/shared/queues';
-import { createHarness, PERSONAL, WORK, type Harness } from '../lib/testing';
+import {
+  createHarness,
+  fakeTwoSourceConnector,
+  PERSONAL,
+  WORK,
+  type Harness,
+} from '../lib/testing';
 import {
   catchupSync,
   dailyBriefs,
@@ -41,33 +47,39 @@ beforeEach(() => {
 describe('renew-subscriptions', () => {
   it('renews watches expiring within 48h, subscribes live accounts without one, keeps cursors', async () => {
     const user = await h.createUser();
-    const expiring = await h.connectAccount(user.id, WORK, { syncCursor: '1000' });
+    const expiring = await h.connectAccount(user.id, WORK);
     const missing = await h.connectAccount(user.id, PERSONAL);
     const u2 = await h.createUser();
-    const fresh = await h.connectAccount(u2.id, WORK, { syncCursor: '1000' });
+    const fresh = await h.connectAccount(u2.id, WORK);
     const paused = await h.connectAccount(u2.id, PERSONAL, { status: 'paused' });
     const soon = new Date(Date.now() + 24 * 3600_000);
     const later = new Date(Date.now() + 5 * 86400_000);
+    const topic = 'projects/hub-fake/topics/gmail';
     await h.db.insert(subscriptions).values([
-      { accountId: expiring.id, kind: 'gmail.watch', expiresAt: soon },
-      { accountId: fresh.id, kind: 'gmail.watch', expiresAt: later },
+      {
+        accountId: expiring.id,
+        kind: 'mail',
+        externalSubId: topic,
+        expiresAt: soon,
+        cursor: '1000',
+      },
+      { accountId: fresh.id, kind: 'mail', externalSubId: topic, expiresAt: later, cursor: '1000' },
     ]);
 
     const r = await renewSubscriptions(h.deps);
     expect(r).toEqual({ renewed: 1, subscribed: 1, reconnect: 0, failed: 0, unchanged: 1 });
 
     const subs = await h.db.select().from(subscriptions);
-    const exp = (id: string) => subs.find((s) => s.accountId === id)?.expiresAt?.getTime() ?? 0;
+    const sub = (id: string) => subs.find((s) => s.accountId === id);
+    const exp = (id: string) => sub(id)?.expiresAt?.getTime() ?? 0;
     expect(exp(expiring.id)).toBeGreaterThan(Date.now() + 6 * 86400_000);
     expect(exp(missing.id)).toBeGreaterThan(Date.now() + 6 * 86400_000);
     expect(exp(fresh.id)).toBe(later.getTime());
-    expect(subs.find((s) => s.accountId === paused.id)).toBeUndefined();
+    expect(sub(paused.id)).toBeUndefined();
 
-    const rows = await h.db.select().from(accounts);
-    expect(rows.find((a) => a.id === expiring.id)!.syncCursor).toBe('1000');
-    expect(rows.find((a) => a.id === missing.id)!.syncCursor).toBe(
-      String(h.store.mailbox(PERSONAL)!.historyId),
-    );
+    expect(sub(expiring.id)!.cursor).toBe('1000');
+    expect(sub(missing.id)!.cursor).toBe(String(h.store.mailbox(PERSONAL)!.historyId));
+    expect(sub(missing.id)!.kind).toBe('mail');
   });
 
   it('marks accounts with revoked tokens as reconnect', async () => {
@@ -83,6 +95,54 @@ describe('renew-subscriptions', () => {
     expect((await h.db.select().from(accounts).where(eq(accounts.id, a.id)))[0]!.status).toBe(
       'reconnect',
     );
+  });
+});
+
+describe('renew-subscriptions: any provider, per source', () => {
+  it('renews expiring push sources with their own context and subscribes missing ones', async () => {
+    const fake = fakeTwoSourceConnector();
+    h.addConnector(fake.connector);
+    const user = await h.createUser();
+    const a = await h.addAccount(user.id, 'microsoft', 'renew-ms-1');
+    const off = await h.addAccount(user.id, 'microsoft', 'renew-ms-2', {
+      filters: { sources: { files: false } },
+    });
+    const soon = new Date(Date.now() + 3600_000);
+    await h.db.insert(subscriptions).values([
+      {
+        accountId: a.id,
+        kind: 'mail',
+        externalSubId: 'sub-old',
+        expiresAt: soon,
+        cursor: '7',
+        meta: { secretHash: 'b'.repeat(64), resource: 'me/messages' },
+      },
+    ]);
+
+    const r = await renewSubscriptions(h.deps);
+    // a: mail renewed, files subscribed. off: mail subscribed, files disabled.
+    expect(r).toMatchObject({ renewed: 1, subscribed: 2, reconnect: 0, failed: 0 });
+    const renewed = fake.callsFor(a.id, 'renew');
+    expect(renewed).toEqual([{ op: 'renew', accountId: a.id, source: 'mail' }]);
+    expect(fake.callsFor(a.id, 'subscribe').map((c) => c.source)).toEqual(['files']);
+    expect(fake.callsFor(off.id, 'subscribe').map((c) => c.source)).toEqual(['mail']);
+
+    const subs = await h.db
+      .select()
+      .from(subscriptions)
+      .where(inArray(subscriptions.accountId, [a.id, off.id]));
+    const mail = subs.find((s) => s.accountId === a.id && s.kind === 'mail')!;
+    expect(mail.externalSubId).toMatch(/^sub-\d+$/);
+    expect(mail.expiresAt!.getTime()).toBeGreaterThan(Date.now() + 2 * 86400_000);
+    expect(mail.cursor).toBe('7');
+    // Renew may re-register: the returned id and meta replace the old ones; the cursor stays.
+    expect(mail.externalSubId).not.toBe('sub-old');
+    expect(mail.meta).toEqual({ secretHash: 'a'.repeat(64), subscribedAt: expect.any(String) });
+    expect(subs.filter((s) => s.accountId === off.id).map((s) => s.kind)).toEqual(['mail']);
+
+    // Sources without push and non-expiring subscriptions are left alone next time.
+    const again = await renewSubscriptions(h.deps);
+    expect(again).toMatchObject({ renewed: 0, subscribed: 0 });
   });
 });
 

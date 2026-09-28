@@ -6,7 +6,7 @@ import { LoadingState, Notice, Screen } from '@/components/layout';
 import { Title } from '@/components/Txt';
 import { Button } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
-import { finishConnect, type ConnectOutcome } from '@/lib/connect';
+import { finishConnect, noticeParams, type ConnectOutcome } from '@/lib/connect';
 import { qk } from '@/lib/queries';
 
 // On web the OAuth popup lands here; this hands the URL back to the opener and closes it.
@@ -30,7 +30,7 @@ export default function Connected() {
   const error = one(params.error);
   const signedIn = status === 'onboarding' || status === 'ready';
   const [outcome, setOutcome] = useState<ConnectOutcome | null>(
-    pending || error ? null : { ok: true, accountId: null },
+    pending || error ? null : { ok: true, accountId: null, accounts: [], access: null },
   );
 
   useEffect(() => {
@@ -56,7 +56,8 @@ export default function Connected() {
   if (handedOff) return <LoadingState label="Finishing up…" />;
   if (status === 'signedOut') return <Redirect href="/welcome" />;
   if (!signedIn || !outcome) return <LoadingState label="Finishing up…" />;
-  if (outcome.ok || outcome.cancelled || !outcome.message) return <Redirect href={home} />;
+  if (outcome.ok) return <Redirect href={{ pathname: home, params: noticeParams(outcome) }} />;
+  if (outcome.cancelled || !outcome.message) return <Redirect href={home} />;
   return (
     <Screen>
       <Title size={28}>Nothing was connected</Title>

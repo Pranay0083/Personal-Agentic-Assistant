@@ -1,7 +1,15 @@
-import { and, asc, eq, ne } from 'drizzle-orm';
+import { and, asc, eq, inArray, ne } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { MissingScopeError, type Connector, type OAuthTokens } from '@hub/connectors';
-import { accounts, users, type Db } from '@hub/db';
+import {
+  enabledSources,
+  identitiesOf,
+  MissingScopeError,
+  type Connector,
+  type ExchangeResult,
+  type Identity,
+  type OAuthTokens,
+} from '@hub/connectors';
+import { accounts, subscriptions, users, type Db } from '@hub/db';
 import { ACCOUNT_COLORS, AccountFilters, Provider, type Account } from '@hub/shared';
 import {
   CompleteConnectReq,
@@ -54,18 +62,70 @@ async function auditConnectFailed(ctx: Ctx, state: OAuthState, error: string) {
   });
 }
 
-const PERSONAL_DOMAINS = new Set(['gmail.com', 'googlemail.com']);
+const PERSONAL_DOMAINS: Record<string, Set<string>> = {
+  gmail: new Set(['gmail.com', 'googlemail.com']),
+  microsoft: new Set(['outlook.com', 'hotmail.com', 'live.com', 'msn.com']),
+};
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
-export function lookupConnector(ctx: Ctx, provider: Provider): Connector {
-  let c: Connector | undefined;
+/** The provider's connector, or undefined if it isn't implemented. */
+export function findConnector(ctx: Ctx, provider: string): Connector | undefined {
   try {
-    c = ctx.getConnector(provider);
+    return ctx.getConnector(provider as Provider) ?? undefined;
   } catch {
-    c = undefined;
+    return undefined;
   }
-  if (!c) throw new HttpError(400, 'unsupported_provider', `${provider} is not supported yet`);
+}
+
+function isConfigured(c: Connector): boolean {
+  try {
+    return c.configured();
+  } catch {
+    return false;
+  }
+}
+
+/** The connector for a provider that is implemented and configured on this server, or 400. */
+export function lookupConnector(ctx: Ctx, provider: Provider): Connector {
+  const c = findConnector(ctx, provider);
+  if (!c || !isConfigured(c)) {
+    throw new HttpError(400, 'unsupported_provider', `${provider} is not supported yet`);
+  }
   return c;
+}
+
+/** Accounts (other than `except`) whose read or write token is this secret. */
+async function secretUsers(
+  db: Db,
+  ref: string,
+  column: 'read' | 'write',
+  except?: string,
+): Promise<string[]> {
+  const col = column === 'read' ? accounts.tokenRef : accounts.writeTokenRef;
+  const rows = await db
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(except ? and(eq(col, ref), ne(accounts.id, except)) : eq(col, ref));
+  return rows.map((r) => r.id);
+}
+
+/** Scopes the consent granted, when the provider reports them (space or comma separated). */
+function grantedScopes(tokens: OAuthTokens): string[] | null {
+  if (!tokens.scope) return null;
+  return tokens.scope.split(/[\s,]+/).filter(Boolean);
+}
+
+const objectOf = (v: unknown): Record<string, unknown> =>
+  v && typeof v === 'object' && !Array.isArray(v) ? { ...(v as Record<string, unknown>) } : {};
+
+/** Providers whose identity is a person (a mailbox); others name a workspace or site. */
+const PERSON_IDENTITY = new Set<string>(['gmail', 'microsoft']);
+
+/** The identity's display name when it names a workspace or site (Slack team, Jira site). */
+function workspaceName(provider: string, displayName: string | null): string | null {
+  const n = displayName?.trim();
+  if (!n || PERSON_IDENTITY.has(provider) || n.includes('@')) return null;
+  return n.slice(0, 40);
 }
 
 /** Secret kinds for OAuth tokens. The value is JSON of `OAuthTokens`. */
@@ -94,9 +154,10 @@ async function defaultNickname(db: Db, userId: string, provider: string, base: s
 }
 
 function isPersonalAddress(provider: string, externalId: string): boolean {
-  if (provider !== 'gmail') return false;
+  const domains = PERSONAL_DOMAINS[provider];
+  if (!domains) return false;
   const domain = externalId.split('@')[1]?.toLowerCase();
-  return domain !== undefined && PERSONAL_DOMAINS.has(domain);
+  return domain !== undefined && domains.has(domain);
 }
 
 /** Applies a PATCH to one account (also used by apply-settings-to-provider). */
@@ -118,8 +179,17 @@ async function updateAccount(
     if (!HEX_COLOR.test(patch.color)) throw badRequest('color: expected #RRGGBB');
     set.color = patch.color;
   }
+  const before = accountFilters(account.filters);
+  let after = before;
   if (patch.filters !== undefined) {
-    set.filters = AccountFilters.parse({ ...accountFilters(account.filters), ...patch.filters });
+    // Shallow merge, and per-key for the source and option maps: only sent keys change.
+    after = AccountFilters.parse({
+      ...before,
+      ...patch.filters,
+      sources: { ...before.sources, ...(patch.filters.sources ?? {}) },
+      options: { ...before.options, ...(patch.filters.options ?? {}) },
+    });
+    set.filters = after;
   }
   if (patch.isPersonal !== undefined) set.isPersonal = patch.isPersonal;
 
@@ -145,6 +215,8 @@ async function updateAccount(
   if (patch.isPersonal !== undefined && patch.isPersonal !== account.isPersonal) {
     await syncStrictPolicies(db, account.userId, account.id, ctx.now());
   }
+  const sourcesChanged =
+    patch.filters?.sources !== undefined && (await applySourceToggles(ctx, account, before, after));
   if (backfill !== null) {
     await ctx.enqueue(
       QUEUES.backfill,
@@ -158,15 +230,56 @@ async function updateAccount(
       principal: 'user',
       action: 'account.updated',
       target: `account:${account.id}`,
-      details: { fields: Object.keys(set), ...(backfill ? { backfillDays: backfill } : {}) },
+      details: {
+        fields: Object.keys(set),
+        ...(backfill ? { backfillDays: backfill } : {}),
+        ...(sourcesChanged ? { sources: after.sources } : {}),
+      },
     });
     await ctx.live(account.userId, { type: 'account.updated', accountId: account.id });
   }
   return updated;
 }
 
+/**
+ * After `filters.sources` changed: flips `subscriptions.enabled` on the account's source rows
+ * and enqueues a sync, which unsubscribes disabled sources and subscribes enabled ones.
+ * Returns whether the set of enabled sources changed.
+ */
+async function applySourceToggles(
+  ctx: Ctx,
+  account: AccountRow,
+  before: AccountFilters,
+  after: AccountFilters,
+): Promise<boolean> {
+  const connector = findConnector(ctx, account.provider);
+  if (!connector) return false;
+  const meta = objectOf(account.meta);
+  const was = enabledSources(connector.info, before, meta);
+  const now = new Set(enabledSources(connector.info, after, meta));
+  if (was.length === now.size && was.every((s) => now.has(s))) return false;
+  const rows = await ctx.db
+    .select({ id: subscriptions.id, kind: subscriptions.kind, enabled: subscriptions.enabled })
+    .from(subscriptions)
+    .where(eq(subscriptions.accountId, account.id));
+  for (const row of rows) {
+    const want = now.has(row.kind);
+    if (row.enabled === want) continue;
+    await ctx.db
+      .update(subscriptions)
+      .set({ enabled: want, updatedAt: ctx.now() })
+      .where(eq(subscriptions.id, row.id));
+  }
+  await ctx.enqueue(
+    QUEUES.sync,
+    { accountId: account.id, reason: 'manual' },
+    { jobId: `sync-sources-${account.id}-${ctx.now().getTime()}` },
+  );
+  return true;
+}
+
 const ProviderParam = z.object({ provider: Provider });
-const CallbackParam = z.object({ name: z.string() });
+const CallbackParam = z.object({ provider: z.string() });
 const CallbackQuery = z.object({
   state: z.string().optional(),
   code: z.string().optional(),
@@ -212,6 +325,9 @@ export function accountRoutes(app: FastifyInstance, ctx: Ctx) {
     const redirect = checkAppRedirect(config, body.redirectUri);
     const provider = account.provider as Provider;
     const connector = lookupConnector(ctx, provider);
+    if (connector.info.writeActions.length === 0) {
+      throw new HttpError(400, 'write_not_supported', `${provider} has no write actions`);
+    }
     const state = await signState(
       config,
       {
@@ -228,13 +344,15 @@ export function accountRoutes(app: FastifyInstance, ctx: Ctx) {
         state,
         redirectUri: callbackUrl(config, provider),
         access: 'write',
-        loginHint: account.externalId,
+        // Only mailbox identities make sense as a login hint (not `T123:U456` or a cloud id).
+        ...(account.externalId.includes('@') ? { loginHint: account.externalId } : {}),
       }),
     };
   });
 
-  app.get('/oauth/:name/callback', async (req, reply) => {
-    const { name } = parse(CallbackParam, req.params);
+  // `:provider` is the callback name from CALLBACK_NAME (Gmail uses `google`); see callbackUrl.
+  app.get('/oauth/:provider/callback', async (req, reply) => {
+    const { provider: name } = parse(CallbackParam, req.params);
     const q = parse(CallbackQuery, req.query);
     const state = q.state ? await verifyState(config, q.state, ctx.now()) : null;
     if (!state || CALLBACK_NAME[state.provider] !== name) {
@@ -297,7 +415,7 @@ export function accountRoutes(app: FastifyInstance, ctx: Ctx) {
     };
 
     const connector = lookupConnector(ctx, state.provider);
-    let exchanged: Exchanged;
+    let exchanged: ExchangeResult;
     try {
       exchanged = await connector.connect.exchange({
         code,
@@ -314,8 +432,10 @@ export function accountRoutes(app: FastifyInstance, ctx: Ctx) {
       state.access === 'write'
         ? await storeWriteTokens(ctx, state, exchanged)
         : await storeReadTokens(ctx, state, exchanged);
-    if (typeof stored !== 'string') return fail(stored.error);
-    return { account: toAccount(await ctx.account(userId, stored)), access: state.access };
+    if (!Array.isArray(stored)) return fail(stored.error);
+    const all: Account[] = [];
+    for (const id of stored) all.push(toAccount(await ctx.account(userId, id)));
+    return { account: all[0]!, accounts: all, access: state.access };
   });
 
   app.patch('/accounts/:id', async (req): Promise<Account> => {
@@ -372,33 +492,36 @@ export function accountRoutes(app: FastifyInstance, ctx: Ctx) {
   app.delete('/accounts/:id', async (req, reply) => {
     const userId = req.auth.userId;
     const account = await ctx.account(userId, idParam(req.params));
-    // Only the read token is handled here. The API can't decrypt write tokens (only the
-    // executor can), so the write token is handed to the executor to revoke and delete.
-    const refs = [account.tokenRef].filter((r): r is string => !!r);
-
-    // Best effort: revoke at the provider first; a failure never blocks deletion.
-    let revoked = false;
-    try {
-      const connector = ctx.getConnector(account.provider as Provider);
-      if (connector) {
-        for (const ref of refs) {
-          const tokens = await secrets.getJson<OAuthTokens>(ref);
-          await connector.connect.revoke(tokens);
-        }
-        revoked = refs.length > 0;
-      }
-    } catch (err) {
-      ctx.warn('token revoke failed', { provider: account.provider, err: errorFields(err) });
-    }
-
     await db.delete(accounts).where(and(eq(accounts.id, account.id), eq(accounts.userId, userId)));
-    for (const ref of refs) await secrets.delete(ref);
-    if (account.writeTokenRef) {
+
+    // Accounts from one consent share their token secret; it goes only with the last of them.
+    // Checked after the row is gone, so two sibling deletes never both keep it.
+    const readRef = account.tokenRef;
+    const readShared = !!readRef && (await secretUsers(db, readRef, 'read')).length > 0;
+    let revoked = false;
+    if (readRef && !readShared) {
+      // Best effort: revoke at the provider; a failure never blocks deletion.
+      try {
+        const connector = findConnector(ctx, account.provider);
+        if (connector) {
+          await connector.connect.revoke(await secrets.getJson<OAuthTokens>(readRef));
+          revoked = true;
+        }
+      } catch (err) {
+        ctx.warn('token revoke failed', { provider: account.provider, err: errorFields(err) });
+      }
+      await secrets.delete(readRef);
+    }
+    // The API can't decrypt write tokens (only the executor can), so the write token is
+    // handed to the executor to revoke and delete, unless another account still uses it.
+    const writeRef = account.writeTokenRef;
+    const writeShared = !!writeRef && (await secretUsers(db, writeRef, 'write')).length > 0;
+    if (writeRef && !writeShared) {
       await requestWriteTokenRevocation(ctx.enqueue, {
         userId,
         accountId: account.id,
         provider: account.provider,
-        secretRef: account.writeTokenRef,
+        secretRef: writeRef,
       });
     }
     await ctx.audit({
@@ -409,7 +532,8 @@ export function accountRoutes(app: FastifyInstance, ctx: Ctx) {
       details: {
         provider: account.provider,
         revoked,
-        writeRevocationQueued: !!account.writeTokenRef,
+        sharedTokenKept: readShared,
+        writeRevocationQueued: !!writeRef && !writeShared,
       },
     });
     await ctx.live(userId, { type: 'account.updated', accountId: account.id });
@@ -417,108 +541,159 @@ export function accountRoutes(app: FastifyInstance, ctx: Ctx) {
   });
 }
 
-type Exchanged = { tokens: OAuthTokens; externalId: string; displayName: string | null };
-
-/** Read-scope consent: create or refresh the account. Returns the account id. */
+/**
+ * Read-scope consent: creates or refreshes one account per identity (several Atlassian sites
+ * from one consent, for example). All of them share one token secret. Returns the ids.
+ */
 async function storeReadTokens(
   ctx: Ctx,
   state: OAuthState,
-  ex: Exchanged,
-): Promise<string | { error: ConnectErrorCode }> {
+  ex: ExchangeResult,
+): Promise<string[] | { error: ConnectErrorCode }> {
   const { db, secrets } = ctx;
   const { userId, provider } = state;
-  // Stored as the connector returns it: the gateway maps webhook identities to it verbatim.
-  const externalId = ex.externalId.trim();
   const now = ctx.now();
 
-  const [existing] = await db
+  // Stored as the connector returns them: the gateway maps webhook identities verbatim.
+  const identities: Identity[] = [];
+  for (const id of identitiesOf(ex)) {
+    const externalId = id.externalId.trim();
+    if (externalId && !identities.some((i) => i.externalId === externalId)) {
+      identities.push({ ...id, externalId });
+    }
+  }
+  if (identities.length === 0) return { error: 'exchange_failed' };
+
+  const existing = await db
     .select()
     .from(accounts)
     .where(
       and(
         eq(accounts.userId, userId),
         eq(accounts.provider, provider),
-        eq(accounts.externalId, externalId),
+        inArray(
+          accounts.externalId,
+          identities.map((i) => i.externalId),
+        ),
       ),
     );
+  const existingIds = new Set(existing.map((r) => r.id));
 
-  if (existing) {
-    // Reconnect: rotate the stored tokens, keeping a refresh token Google didn't resend.
-    let tokens = ex.tokens;
-    if (existing.tokenRef) {
-      if (!tokens.refreshToken) {
-        const old = await secrets.getJson<OAuthTokens>(existing.tokenRef).catch(() => null);
-        if (old?.refreshToken) tokens = { ...tokens, refreshToken: old.refreshToken };
-      }
-      await secrets.replace(existing.tokenRef, JSON.stringify(tokens));
+  // Reuse an existing secret only if every account using it is part of this consent.
+  let reuse: string | null = null;
+  for (const row of existing) {
+    if (!row.tokenRef) continue;
+    const usedBy = await secretUsers(db, row.tokenRef, 'read');
+    if (usedBy.every((id) => existingIds.has(id))) {
+      reuse = row.tokenRef;
+      break;
     }
-    const tokenRef =
-      existing.tokenRef ??
-      (await secrets.put(userId, tokenKind(provider, 'read'), JSON.stringify(tokens)));
-    const status = ['reconnect', 'disconnected'].includes(existing.status)
-      ? 'connecting'
-      : existing.status;
-    await db.update(accounts).set({ tokenRef, status }).where(eq(accounts.id, existing.id));
-    await ctx.audit({
-      userId,
-      principal: 'user',
-      action: 'account.reconnected',
-      target: `account:${existing.id}`,
-      details: { provider, access: 'read' },
-    });
-    await ctx.live(userId, { type: 'account.updated', accountId: existing.id });
-    return existing.id;
   }
-
-  const tokenRef = await secrets.put(
-    userId,
-    tokenKind(provider, 'read'),
-    JSON.stringify(ex.tokens),
-  );
-  const isPersonal = isPersonalAddress(provider, externalId);
-  const [created] = await db
-    .insert(accounts)
-    .values({
-      userId,
-      provider,
-      externalId,
-      nickname: await defaultNickname(db, userId, provider, isPersonal ? 'Personal' : 'Work'),
-      color: await nextColor(db, userId),
-      status: 'connecting',
-      isPersonal,
-      tokenRef,
-    })
-    .onConflictDoNothing({ target: [accounts.userId, accounts.provider, accounts.externalId] })
-    .returning();
-  if (!created) {
-    // Lost a race with a parallel callback for the same account.
-    await secrets.delete(tokenRef);
-    return { error: 'already_connected' };
+  let tokens = ex.tokens;
+  if (reuse && !tokens.refreshToken) {
+    // Keep a refresh token the provider didn't resend (Google on re-consent).
+    const old = await secrets.getJson<OAuthTokens>(reuse).catch(() => null);
+    if (old?.refreshToken) tokens = { ...tokens, refreshToken: old.refreshToken };
   }
+  let tokenRef: string;
+  if (reuse) {
+    await secrets.replace(reuse, JSON.stringify(tokens));
+    tokenRef = reuse;
+  } else {
+    tokenRef = await secrets.put(userId, tokenKind(provider, 'read'), JSON.stringify(tokens));
+  }
+  const scopes = grantedScopes(tokens);
 
   const [user] = await db
     .select({ strictPersonal: users.strictPersonal })
     .from(users)
     .where(eq(users.id, userId));
-  if (isPersonal && user?.strictPersonal) await applyStrictPolicies(db, userId, created.id, now);
+  const out: string[] = [];
+  const replacedRefs = new Set<string>();
+  for (const identity of identities) {
+    const { externalId } = identity;
+    const prior = existing.find((r) => r.externalId === externalId);
+    if (prior) {
+      // Reconnect: point at the new secret; recorded scopes are replaced by this consent's.
+      if (prior.tokenRef && prior.tokenRef !== tokenRef) replacedRefs.add(prior.tokenRef);
+      const { grantedScopes: _old, ...kept } = objectOf(prior.meta);
+      const meta = {
+        ...kept,
+        ...(identity.meta ?? {}),
+        ...(scopes ? { grantedScopes: scopes } : {}),
+      };
+      const status = ['reconnect', 'disconnected'].includes(prior.status)
+        ? 'connecting'
+        : prior.status;
+      await db
+        .update(accounts)
+        .set({ tokenRef, status, meta, routeKeys: identity.routeKeys ?? prior.routeKeys })
+        .where(eq(accounts.id, prior.id));
+      await ctx.audit({
+        userId,
+        principal: 'user',
+        action: 'account.reconnected',
+        target: `account:${prior.id}`,
+        details: { provider, access: 'read' },
+      });
+      await ctx.live(userId, { type: 'account.updated', accountId: prior.id });
+      out.push(prior.id);
+      continue;
+    }
 
-  await ctx.audit({
-    userId,
-    principal: 'user',
-    action: 'account.connected',
-    target: `account:${created.id}`,
-    details: { provider, access: 'read', isPersonal },
-  });
-  await ctx.live(userId, { type: 'account.updated', accountId: created.id });
-  return created.id;
+    // The connector may know better than the address (Microsoft: consumer tenant id).
+    const isPersonal =
+      identity.meta?.personal === true ||
+      isPersonalAddress(provider, externalId) ||
+      isPersonalAddress(provider, String(identity.meta?.mail ?? ''));
+    const base =
+      workspaceName(provider, identity.displayName) ?? (isPersonal ? 'Personal' : 'Work');
+    const [created] = await db
+      .insert(accounts)
+      .values({
+        userId,
+        provider,
+        externalId,
+        nickname: await defaultNickname(db, userId, provider, base),
+        color: await nextColor(db, userId),
+        status: 'connecting',
+        isPersonal,
+        tokenRef,
+        meta: { ...(identity.meta ?? {}), ...(scopes ? { grantedScopes: scopes } : {}) },
+        routeKeys: identity.routeKeys ?? [],
+      })
+      .onConflictDoNothing({ target: [accounts.userId, accounts.provider, accounts.externalId] })
+      .returning();
+    if (!created) continue; // lost a race with a parallel completion for the same account
+    if (isPersonal && user?.strictPersonal) await applyStrictPolicies(db, userId, created.id, now);
+    await ctx.audit({
+      userId,
+      principal: 'user',
+      action: 'account.connected',
+      target: `account:${created.id}`,
+      details: { provider, access: 'read', isPersonal, identities: identities.length },
+    });
+    await ctx.live(userId, { type: 'account.updated', accountId: created.id });
+    out.push(created.id);
+  }
+
+  // Secrets no account points at any more (each was replaced by this consent's).
+  for (const ref of replacedRefs) {
+    if ((await secretUsers(db, ref, 'read')).length === 0) await secrets.delete(ref);
+  }
+  if (out.length === 0) {
+    if ((await secretUsers(db, tokenRef, 'read')).length === 0) await secrets.delete(tokenRef);
+    return { error: 'already_connected' };
+  }
+  return out;
 }
 
 /** Write-scope consent: stored separately in write_token_ref, used only by the executor. */
 async function storeWriteTokens(
   ctx: Ctx,
   state: OAuthState,
-  ex: Exchanged,
-): Promise<string | { error: ConnectErrorCode }> {
+  ex: ExchangeResult,
+): Promise<string[] | { error: ConnectErrorCode }> {
   const { db, secrets } = ctx;
   if (!state.accountId) return { error: 'invalid_state' };
   const [account] = await db
@@ -526,11 +701,19 @@ async function storeWriteTokens(
     .from(accounts)
     .where(and(eq(accounts.id, state.accountId), eq(accounts.userId, state.userId)));
   if (!account) return { error: 'account_not_found' };
-  if (account.externalId.toLowerCase() !== ex.externalId.trim().toLowerCase()) {
-    // The user consented with a different Google account than the one being upgraded.
+  const target = account.externalId.toLowerCase();
+  if (!identitiesOf(ex).some((i) => i.externalId.trim().toLowerCase() === target)) {
+    // The user consented with a different identity than the one being upgraded.
     return { error: 'account_mismatch' };
   }
   const value = JSON.stringify(ex.tokens);
+  // Write access is granted to this account only, even if the consent covers others.
+  if (
+    account.writeTokenRef &&
+    (await secretUsers(db, account.writeTokenRef, 'write', account.id)).length > 0
+  ) {
+    account.writeTokenRef = null; // shared with another account: give this one its own
+  }
   if (account.writeTokenRef) await secrets.replace(account.writeTokenRef, value);
   const writeTokenRef =
     account.writeTokenRef ??
@@ -544,5 +727,5 @@ async function storeWriteTokens(
     details: { provider: account.provider },
   });
   await ctx.live(state.userId, { type: 'account.updated', accountId: account.id });
-  return account.id;
+  return [account.id];
 }

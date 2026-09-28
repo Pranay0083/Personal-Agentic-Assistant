@@ -2,7 +2,13 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { accounts, items, subscriptions } from '@hub/db';
 import { BackfillJob, QUEUES } from '@hub/shared/queues';
-import { createHarness, PERSONAL, WORK, type Harness } from '../lib/testing';
+import {
+  createHarness,
+  fakeTwoSourceConnector,
+  PERSONAL,
+  WORK,
+  type Harness,
+} from '../lib/testing';
 import { BACKFILL_TRIAGE_PRIORITY, runBackfill } from './index';
 
 let h: Harness;
@@ -49,16 +55,17 @@ describe('backfill worker', () => {
     const a = await h.connectAccount(user.id, WORK, { status: 'connecting' });
 
     const first = await runBackfill(h.deps, { accountId: a.id, days: 7 });
-    expect(first).toMatchObject({ status: 'page', inserted: 2 });
+    expect(first).toMatchObject({ status: 'page', source: 'mail', inserted: 2 });
     expect(await status(a.id)).toBe('importing');
     expect(
       await h.db.select().from(subscriptions).where(eq(subscriptions.accountId, a.id)),
     ).toHaveLength(1);
     const next = h.jobsFor(QUEUES.backfill);
     expect(next).toHaveLength(1);
-    expect(next[0]!.data).toMatchObject({
+    expect(next[0]!.data).toEqual({
       accountId: a.id,
       days: 7,
+      source: 'mail',
       pageToken: expect.any(String),
     });
     expect(String(next[0]!.opts.jobId)).toMatch(/^backfill-/);
@@ -115,5 +122,55 @@ describe('backfill worker', () => {
       h.store.setRevoked(PERSONAL, false);
     }
     expect(await status(a.id)).toBe('reconnect');
+  });
+});
+
+describe('backfill worker: multi-source connector', () => {
+  const fake = fakeTwoSourceConnector();
+  beforeAll(() => h.addConnector(fake.connector));
+
+  it('backfills every enabled source in turn, then goes live', async () => {
+    const user = await h.createUser();
+    const a = await h.addAccount(user.id, 'microsoft', 'bf-ms-1', { status: 'connecting' });
+    for (const t of ['m1', 'm2', 'm3']) fake.add(a.externalId, 'mail', t);
+    fake.add(a.externalId, 'files', 'f1');
+    fake.add(a.externalId, 'extra', 'default off');
+
+    const pages = await drain({ accountId: a.id, days: 30 });
+    expect(pages).toBe(3); // mail: 2 pages, files: 1
+    const rows = await h.db.select().from(items).where(eq(items.accountId, a.id));
+    expect(rows.map((r) => [r.kind, r.title]).sort()).toEqual([
+      ['email', 'm1'],
+      ['email', 'm2'],
+      ['email', 'm3'],
+      ['file', 'f1'],
+    ]);
+    expect(await status(a.id)).toBe('live');
+    const subs = await h.db.select().from(subscriptions).where(eq(subscriptions.accountId, a.id));
+    expect(subs.map((s) => s.kind).sort()).toEqual(['files', 'mail']);
+    expect(fake.callsFor(a.id, 'backfill').map((c) => c.source)).toEqual(['mail', 'mail', 'files']);
+  });
+
+  it('a resync backfill for one source touches only that source', async () => {
+    const user = await h.createUser();
+    const a = await h.addAccount(user.id, 'microsoft', 'bf-ms-2', { status: 'importing' });
+    fake.add(a.externalId, 'mail', 'only mail');
+    fake.add(a.externalId, 'files', 'not this');
+    await drain({ accountId: a.id, days: 7, source: 'files' });
+    const rows = await h.db.select().from(items).where(eq(items.accountId, a.id));
+    expect(rows.map((r) => r.title)).toEqual(['not this']);
+    expect(await status(a.id)).toBe('live');
+  });
+
+  it('skips a queued source that was disabled meanwhile', async () => {
+    const user = await h.createUser();
+    const a = await h.addAccount(user.id, 'microsoft', 'bf-ms-3', {
+      filters: { sources: { files: false } },
+    });
+    fake.add(a.externalId, 'files', 'disabled');
+    fake.add(a.externalId, 'mail', 'enabled');
+    await drain({ accountId: a.id, days: 7, source: 'files', then: ['mail'] });
+    const rows = await h.db.select().from(items).where(eq(items.accountId, a.id));
+    expect(rows.map((r) => r.title)).toEqual(['enabled']);
   });
 });

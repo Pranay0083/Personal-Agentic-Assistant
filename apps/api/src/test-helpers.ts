@@ -1,7 +1,8 @@
 /** Shared setup for apps/api tests: throwaway DB, fake connector, fake router, captured side effects. */
 import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import type { Connector } from '@hub/connectors';
+import type { Connector, ConnectorInfo } from '@hub/connectors';
+import type { Provider } from '@hub/shared';
 import { createTestDb } from '@hub/db/testing';
 import type { RouteRequest, RouteResult } from '@hub/models';
 import { LocalKeyProvider, SecretStore } from '@hub/server/secrets';
@@ -53,6 +54,15 @@ export function fakeGmailConnector() {
   const exchangedAccess: (string | undefined)[] = [];
   const connector = {
     provider: 'gmail',
+    info: {
+      name: 'Google',
+      covers: 'Gmail',
+      multiAccountNote: null,
+      sources: [{ id: 'mail', label: 'Gmail', hint: null, kind: 'email', defaultOn: true }],
+      options: [],
+      writeActions: ['gmail.send'],
+    },
+    configured: () => true,
     connect: {
       authUrl: ({ state, redirectUri, access, loginHint }) => {
         const u = new URL('https://accounts.fake/o/oauth2/auth');
@@ -87,6 +97,100 @@ export function fakeGmailConnector() {
   return { connector, revoked, exchanged, exchangedAccess };
 }
 
+export const ATLASSIAN_INFO: ConnectorInfo = {
+  name: 'Atlassian',
+  covers: 'Jira, Confluence',
+  multiAccountNote: 'One per site',
+  sources: [
+    {
+      id: 'jira',
+      label: 'Jira',
+      hint: null,
+      kind: 'ticket',
+      defaultOn: true,
+      scopes: ['read:jira-work'],
+    },
+    {
+      id: 'confluence',
+      label: 'Confluence',
+      hint: 'Pages you watch',
+      kind: 'note',
+      defaultOn: true,
+      scopes: ['read:confluence-content.all'],
+    },
+  ],
+  options: [
+    {
+      key: 'projects',
+      label: 'Projects',
+      hint: null,
+      type: 'choice',
+      choices: [{ value: 'mine', label: 'Mine' }],
+      default: 'mine',
+    },
+  ],
+  writeActions: ['jira.comment'],
+};
+
+/**
+ * A fake multi-identity connector: code `fake-sites:<user>:<a>,<b>[:<scope>,<scope>]` grants
+ * one consent for sites `a` and `b` (identities `cloud-a`, `cloud-b`), by default with the
+ * Jira and Confluence read scopes.
+ */
+export function fakeSitesConnector(
+  provider: Provider = 'atlassian',
+  opts: { configured?: boolean; info?: Partial<ConnectorInfo> } = {},
+) {
+  const revoked: string[] = [];
+  const connector = {
+    provider,
+    info: { ...ATLASSIAN_INFO, ...opts.info },
+    configured: () => opts.configured ?? true,
+    connect: {
+      authUrl: ({ state, redirectUri, access, loginHint }) => {
+        const u = new URL(`https://${provider}.fake/authorize`);
+        u.searchParams.set('state', state);
+        u.searchParams.set('redirect_uri', redirectUri);
+        u.searchParams.set('access', access);
+        if (loginHint) u.searchParams.set('login_hint', loginHint);
+        return u.toString();
+      },
+      exchange: async ({ code }) => {
+        const [, user, sites, scopes] = code.split(':');
+        if (!user || !sites) throw new Error('bad code');
+        const identities = sites.split(',').map((site) => ({
+          externalId: `cloud-${site}`,
+          displayName: site === 'nameless' ? null : `${site[0]!.toUpperCase()}${site.slice(1)}`,
+          routeKeys: [`cloud-${site}`],
+          meta: { siteUrl: `https://${site}.atlassian.example` },
+        }));
+        return {
+          tokens: {
+            accessToken: rawAccess(`${user}@${sites}`),
+            refreshToken: rawRefresh(`${user}@${sites}`),
+            scope: scopes
+              ? scopes.split(',').join(' ')
+              : 'read:jira-work read:confluence-content.all offline_access',
+          },
+          externalId: identities[0]!.externalId,
+          displayName: identities[0]!.displayName,
+          identities,
+        };
+      },
+      revoke: async (tokens) => {
+        revoked.push(tokens.accessToken);
+      },
+    },
+    subscribe: async () => ({ externalSubId: null, expiresAt: null }),
+    renew: async () => ({ externalSubId: null, expiresAt: null }),
+    verifyWebhook: async () => ({ ok: false, reason: 'fake' }),
+    fetchDelta: async () => ({ records: [], cursor: null }),
+    backfill: async () => ({ records: [], nextPageToken: null }),
+    normalize: () => null,
+  } satisfies Connector;
+  return { connector: connector as Connector, revoked };
+}
+
 export type Job = { name: string; data: unknown; opts?: { jobId?: string } };
 
 export async function setup(overrides: Partial<ApiDeps> = {}) {
@@ -97,6 +201,17 @@ export async function setup(overrides: Partial<ApiDeps> = {}) {
   const live: { userId: string; event: LiveEvent }[] = [];
   const subscribers = new Map<string, Set<(e: LiveEvent) => void>>();
   const gmail = fakeGmailConnector();
+  const sites = fakeSitesConnector();
+  // Implemented but without client credentials on this server.
+  const notion = fakeSitesConnector('notion', { configured: false });
+  // Implemented, configured, read-only.
+  const github = fakeSitesConnector('github', { info: { writeActions: [] } });
+  const fakes: Partial<Record<Provider, Connector>> = {
+    gmail: gmail.connector,
+    atlassian: sites.connector,
+    notion: notion.connector,
+    github: github.connector,
+  };
   const routerCalls: RouteRequest[] = [];
   let answer = 'Answer [1]';
   let clock = new Date('2026-09-28T10:00:00.000Z');
@@ -122,7 +237,7 @@ export async function setup(overrides: Partial<ApiDeps> = {}) {
       subscribers.set(userId, set);
       return () => set.delete(cb);
     },
-    getConnector: (p) => (p === 'gmail' ? gmail.connector : undefined),
+    getConnector: (p) => fakes[p],
     oauthStore: oauth.store,
     router: {
       generate: async (req): Promise<RouteResult> => {
@@ -174,10 +289,10 @@ export async function setup(overrides: Partial<ApiDeps> = {}) {
   }
 
   /** The provider redirecting the browser back; returns the response and its pending id. */
-  async function callback(state: string, code: string) {
+  async function callback(state: string, code: string, name = 'google') {
     const res = await app.inject({
       method: 'GET',
-      url: `/oauth/google/callback?state=${encodeURIComponent(state)}&code=${encodeURIComponent(code)}`,
+      url: `/oauth/${name}/callback?state=${encodeURIComponent(state)}&code=${encodeURIComponent(code)}`,
     });
     const location = String(res.headers.location ?? '');
     const pending = location ? new URL(location).searchParams.get('pending') : null;
@@ -214,6 +329,7 @@ export async function setup(overrides: Partial<ApiDeps> = {}) {
     jobs,
     live,
     gmail,
+    sites,
     google,
     routerCalls,
     oauth,

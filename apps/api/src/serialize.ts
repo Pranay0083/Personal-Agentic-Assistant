@@ -24,6 +24,7 @@ import {
   type ModelProviderConfig,
   type Proposal,
   type Task,
+  ITEM_REF_PREFIXES,
 } from '@hub/shared';
 import type { Me } from '@hub/shared/api';
 import { iso } from './http';
@@ -76,7 +77,33 @@ export function toAccount(a: AccountRow): Account {
     backfillDays: safe(BackfillDays.safeParse(a.backfillDays), 30),
     lastSyncedAt: iso(a.lastSyncedAt),
     createdAt: a.createdAt.toISOString(),
+    writeAccess: !!a.writeTokenRef,
+    setup: setupOf(a),
   };
+}
+
+/** GitHub: the app isn't installed on any repo yet. Only a github.com URL is ever passed on. */
+function setupOf(a: AccountRow): Account['setup'] {
+  const meta = (a.meta ?? {}) as Record<string, unknown>;
+  if (a.provider !== 'github' || meta.needsInstall !== true || typeof meta.installUrl !== 'string')
+    return null;
+  try {
+    const u = new URL(meta.installUrl);
+    if (u.protocol !== 'https:' || u.hostname !== 'github.com') return null;
+    return { label: 'Install the Hub app on your repositories', url: u.toString() };
+  } catch {
+    return null;
+  }
+}
+
+export function itemRefs(labels: unknown): string[] {
+  if (!Array.isArray(labels)) return [];
+  return labels.filter(
+    (l): l is string =>
+      typeof l === 'string' &&
+      l.length <= 300 &&
+      ITEM_REF_PREFIXES.some((p) => l === p || l.startsWith(p)),
+  );
 }
 
 export function toItem(i: ItemRow): Item {
@@ -92,6 +119,7 @@ export function toItem(i: ItemRow): Item {
     url: i.url,
     bucket: safe(ItemBucket.nullable().safeParse(i.bucket), null),
     statusLabel: i.statusLabel,
+    refs: itemRefs(i.labels),
     receivedAt: i.receivedAt.toISOString(),
   };
 }

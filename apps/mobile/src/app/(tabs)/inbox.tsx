@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, SectionList, View } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ItemBucket, ItemKind, Provider } from '@hub/shared';
 import { useAccounts, useItems } from '@/lib/queries';
-import { useNow } from '@/lib/hooks';
-import { itemTag, shortTime } from '@/lib/format';
+import { useCatalogMap, useNow, useProviderCounts } from '@/lib/hooks';
+import { itemTag, serviceName, shortTime } from '@/lib/format';
 import type { AccountT, ItemT } from '@/lib/api';
 import { colors, HIT } from '@/theme';
 import { Title, Txt } from '@/components/Txt';
@@ -14,7 +14,7 @@ import { EmptyState, ErrorState, LoadingState, Sheet } from '@/components/layout
 import { Check, Chevron, Search } from '@/components/icons';
 import { AskBar, AskSheet, useAsk } from '@/components/Ask';
 
-type Filter = 'all' | 'needs' | 'email' | 'slack' | 'jira' | 'teams';
+type Filter = 'all' | 'needs' | 'email' | 'slack' | 'jira' | 'teams' | 'chat' | 'docs' | 'code';
 type KindT = ReturnType<typeof ItemKind.parse>;
 type BucketT = ReturnType<typeof ItemBucket.parse>;
 type ProviderT = ReturnType<typeof Provider.parse>;
@@ -26,7 +26,13 @@ const FILTERS: Record<Filter, { kind?: KindT; bucket?: BucketT; provider?: Provi
   slack: { kind: 'chat', provider: 'slack' },
   jira: { kind: 'ticket', provider: 'atlassian' },
   teams: { kind: 'chat', provider: 'microsoft' },
+  chat: { kind: 'chat', provider: 'gmail' },
+  docs: { kind: 'note' },
+  code: { kind: 'code' },
 };
+
+/** When a chip filters by provider on the phone, keep paging until a screenful shows. */
+const MIN_FILTERED = 12;
 
 /** Teal for things the hub already handled ("Task created", "Draft ready"), amber otherwise. */
 function chipTone(label: string): 'teal' | 'amber' {
@@ -38,6 +44,8 @@ export default function InboxScreen() {
   const accountsQ = useAccounts();
   const accounts = accountsQ.data?.accounts ?? [];
   const byId = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
+  const counts = useProviderCounts();
+  const catalog = useCatalogMap();
   const [accountId, setAccountId] = useState<string | undefined>(undefined);
   const [filter, setFilter] = useState<Filter>('all');
   const [switcher, setSwitcher] = useState(false);
@@ -53,6 +61,13 @@ export default function InboxScreen() {
     return f.provider ? flat.filter((i) => byId.get(i.accountId)?.provider === f.provider) : flat;
   }, [items.data, f.provider, byId]);
   const needsCount = items.data?.pages[0]?.counts.needsYou ?? 0;
+
+  // The API filters by kind only; Slack vs Teams vs Google Chat is filtered here.
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = items;
+  useEffect(() => {
+    if (f.provider && all.length < MIN_FILTERED && hasNextPage && !isFetchingNextPage)
+      void fetchNextPage();
+  }, [f.provider, all.length, hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   const sections = useMemo(() => {
     const needs = all.filter((i) => i.bucket === 'needs_you');
@@ -71,6 +86,19 @@ export default function InboxScreen() {
     { value: 'jira', label: 'Jira' },
     { value: 'teams', label: 'Teams' },
   ];
+  // Extra chips only for services the user actually has.
+  const hasKind = (p: ProviderT, kind: KindT) =>
+    (counts.get(p) ?? 0) > 0 && !!catalog.get(p)?.sources.some((s) => s.kind === kind);
+  if (hasKind('gmail', 'chat')) chips.push({ value: 'chat', label: 'Chat' });
+  if ((counts.get('notion') ?? 0) > 0 || hasKind('atlassian', 'note'))
+    chips.push({ value: 'docs', label: 'Docs' });
+  if ((counts.get('github') ?? 0) > 0) chips.push({ value: 'code', label: 'Code' });
+  // Accounts grouped by service for the switcher.
+  const accountGroups = useMemo(() => {
+    const m = new Map<string, AccountT[]>();
+    for (const a of accounts) m.set(a.provider, [...(m.get(a.provider) ?? []), a]);
+    return [...m.entries()];
+  }, [accounts]);
 
   const header = (
     <View style={{ gap: 16, paddingBottom: 8 }}>
@@ -178,6 +206,7 @@ export default function InboxScreen() {
           <InboxRow
             item={item}
             account={byId.get(item.accountId)}
+            multi={(counts.get(byId.get(item.accountId)?.provider ?? '') ?? 0) > 1}
             first={index === 0}
             last={index === section.data.length - 1}
             needs={section.key === 'needs'}
@@ -199,18 +228,25 @@ export default function InboxScreen() {
             setSwitcher(false);
           }}
         />
-        {accounts.map((a) => (
-          <AccountOption
-            key={a.id}
-            label={a.nickname}
-            sub={a.externalId}
-            color={a.color}
-            on={accountId === a.id}
-            onPress={() => {
-              setAccountId(a.id);
-              setSwitcher(false);
-            }}
-          />
+        {accountGroups.map(([provider, list]) => (
+          <View key={provider} style={{ gap: 8 }}>
+            <Txt size={12} weight={600} color={colors.secondary} accessibilityRole="header">
+              {catalog.get(provider as ProviderT)?.name ?? serviceName(provider)}
+            </Txt>
+            {list.map((a) => (
+              <AccountOption
+                key={a.id}
+                label={a.nickname}
+                sub={a.externalId}
+                color={a.color}
+                on={accountId === a.id}
+                onPress={() => {
+                  setAccountId(a.id);
+                  setSwitcher(false);
+                }}
+              />
+            ))}
+          </View>
         ))}
       </Sheet>
       <AskSheetOrSearch ask={ask} />
@@ -288,9 +324,12 @@ function InboxRow({
   last,
   needs,
   now,
+  multi,
 }: {
   item: ItemT;
   account: AccountT | undefined;
+  /** The user has several accounts of this provider: add the nickname to the tag. */
+  multi: boolean;
   first: boolean;
   last: boolean;
   needs: boolean;
@@ -333,7 +372,7 @@ function InboxRow({
           }}
         >
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexShrink: 1 }}>
-            <SourceTag label={itemTag(item, account)} />
+            <SourceTag label={itemTag(item, account, multi)} />
             {item.author ? (
               <Txt
                 size={12}

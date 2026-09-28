@@ -2,8 +2,8 @@ import { View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useItem } from '@/lib/queries';
-import { useAccountMap } from '@/lib/hooks';
-import { itemTag, serviceName } from '@/lib/format';
+import { useAccountMap, useProviderCounts } from '@/lib/hooks';
+import { itemTag, productName } from '@/lib/format';
 import { colors } from '@/theme';
 import { Title, Txt } from '@/components/Txt';
 import { Button, Card, Dot, Pill, SourceTag } from '@/components/ui';
@@ -13,6 +13,7 @@ export default function ItemScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const q = useItem(id);
   const accounts = useAccountMap();
+  const counts = useProviderCounts();
 
   if (q.isPending) {
     return (
@@ -41,7 +42,7 @@ export default function ItemScreen() {
       <BackLink label="Back" fallback="/inbox" />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {account ? <Dot color={account.color} size={9} /> : null}
-        <SourceTag label={itemTag(item, account)} />
+        <SourceTag label={itemTag(item, account, (counts.get(account?.provider ?? '') ?? 0) > 1)} />
         <Txt size={12} color={colors.secondary}>
           {when.toLocaleString(undefined, {
             weekday: 'short',
@@ -86,7 +87,7 @@ export default function ItemScreen() {
       </Card>
       {url ? (
         <Button
-          label={`Open in ${account ? serviceName(account.provider) : 'browser'}`}
+          label={`Open in ${productName(account?.provider, item.kind)}`}
           variant="outline"
           onPress={() => void WebBrowser.openBrowserAsync(url)}
         />

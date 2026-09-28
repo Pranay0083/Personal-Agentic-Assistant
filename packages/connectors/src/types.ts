@@ -30,6 +30,11 @@ export type ConnectorContext = {
   tokens: OAuthTokens;
   /** Called when the connector refreshes tokens, so the caller can re-encrypt and store them. */
   saveTokens: (tokens: OAuthTokens) => Promise<void>;
+  /**
+   * Re-reads the stored tokens. Accounts from one consent share a grant, so a sibling may
+   * have rotated the refresh token first; the oauth2 helper retries with the stored one.
+   */
+  reloadTokens?: () => Promise<OAuthTokens>;
   /** Source this call is for (defaults to the connector's first source). */
   source?: string;
   /** Delta cursor of `source` (subscriptions.cursor). */
@@ -65,6 +70,12 @@ export type NormalizedItem = {
    * `github:repo:<owner/name>`, `github:number:<n>`, `github:type:<issue|pr>`,
    * `gcal:event:<id>`, `gdrive:file:<id>`, `gchat:space:<name>`, `gchat:thread:<name>`.
    * Recipients and targets for replies come from these, never from model output.
+   *
+   * Trusted **signals** set from provider metadata (never inferred from message text); triage
+   * and the extractor act on them directly: `hub:mention` (the user was @-mentioned),
+   * `hub:dm` (1:1 conversation), `hub:review_requested`, `hub:assigned`,
+   * `hub:blocking:<n>` (people or issues waiting on it), `hub:rsvp_needed` (invite not yet
+   * answered), `hub:from_me` (the account owner wrote it).
    */
   labels: string[];
   receivedAt: Date;
@@ -242,11 +253,20 @@ export interface Connector<Raw = unknown> {
     payload: Record<string, unknown>,
     idempotencyKey: string,
   ): Promise<ExecuteResult>;
+  /**
+   * Re-reads identity data that can change after connect (GitHub installations → route
+   * keys, `needsInstall`). Sync calls it when an event payload has `refreshRouteKeys: true`.
+   */
+  refreshIdentity?(
+    ctx: ConnectorContext,
+  ): Promise<{ routeKeys?: string[]; meta?: Record<string, unknown> }>;
   /** Looks up whether an action with this idempotency key already happened (crash-safe retries). */
   findExecuted?(
     ctx: ConnectorContext,
     action: string,
     idempotencyKey: string,
+    /** The proposal's payload, for lookups that need a target (Jira issue key, Slack channel). */
+    payload?: Record<string, unknown>,
   ): Promise<ExecuteResult | null>;
 }
 

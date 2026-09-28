@@ -9,6 +9,7 @@ import { activityRoutes } from './routes/activity';
 import { approvalRoutes } from './routes/approvals';
 import { askRoutes } from './routes/ask';
 import { authRoutes } from './routes/auth';
+import { connectorRoutes } from './routes/connectors';
 import { controlRoutes } from './routes/control';
 import { eventRoutes } from './routes/events';
 import { itemRoutes } from './routes/items';
@@ -74,6 +75,7 @@ export async function buildApi(deps: ApiDeps): Promise<FastifyInstance> {
   authRoutes(app, ctx);
   meRoutes(app, ctx);
   accountRoutes(app, ctx);
+  connectorRoutes(app, ctx);
   itemRoutes(app, ctx);
   taskRoutes(app, ctx);
   todayRoutes(app, ctx);

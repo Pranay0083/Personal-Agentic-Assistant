@@ -26,6 +26,9 @@ import {
 export const qk = {
   me: ['me'] as const,
   accounts: ['accounts'] as const,
+  connectors: ['connectors'] as const,
+  /** Under `items` so every items invalidation refreshes it too. */
+  events: ['items', 'events'] as const,
   today: ['today'] as const,
   items: (f: ItemsFilter) => ['items', f] as const,
   itemsAll: ['items'] as const,
@@ -60,6 +63,11 @@ export function makeQueryClient() {
 // ---- Queries ----
 export const useMe = (enabled = true) => useQuery({ queryKey: qk.me, queryFn: api.me, enabled });
 export const useAccounts = () => useQuery({ queryKey: qk.accounts, queryFn: api.accounts });
+/** The catalog changes only when the hub's config does. */
+export const useConnectors = () =>
+  useQuery({ queryKey: qk.connectors, queryFn: api.connectors, staleTime: 5 * 60_000 });
+export const useEvents = (enabled = true) =>
+  useQuery({ queryKey: qk.events, queryFn: api.events, enabled });
 export const useToday = () => useQuery({ queryKey: qk.today, queryFn: api.today });
 export const useItem = (id: string) =>
   useQuery({ queryKey: qk.item(id), queryFn: () => api.item(id) });

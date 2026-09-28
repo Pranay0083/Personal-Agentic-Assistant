@@ -30,6 +30,7 @@ import {
   type ItemsQuery,
   type TasksQuery,
   ConnectRes,
+  ConnectorCatalogRes,
 } from '@hub/shared/api';
 import {
   Account,
@@ -48,7 +49,15 @@ type Parser<T> = { parse(data: unknown): T };
 export type Infer<S extends Parser<unknown>> = ReturnType<S['parse']>;
 
 export type MeT = Infer<typeof Me>;
-export type AccountT = Infer<typeof Account>;
+/**
+ * `writeAccess` is read from the account JSON when the hub sends it (`writeAccess: boolean`
+ * or `access: 'read' | 'write'`); undefined means the hub doesn't say.
+ */
+export type AccountT = Infer<typeof Account> & { writeAccess?: boolean };
+export type ConnectorCatalogT = Infer<typeof ConnectorCatalogRes>;
+export type ConnectorInfoT = ConnectorCatalogT['connectors'][number];
+export type ConnectorSourceT = ConnectorInfoT['sources'][number];
+export type ConnectorOptionT = ConnectorInfoT['options'][number];
 export type ItemT = Infer<typeof Item>;
 export type TaskT = Infer<typeof Task>;
 export type ProposalT = Infer<typeof Proposal>;
@@ -70,7 +79,12 @@ export type ActivityT = Infer<typeof ActivityRes>;
 export type ActivityEntryT = ActivityT['entries'][number];
 export type AskT = Infer<typeof AskRes>;
 export type SignInT = Infer<typeof SignInRes>;
-export type CompleteConnectT = CompleteConnectRes;
+export type CompleteConnectT = Omit<CompleteConnectRes, 'account' | 'accounts'> & {
+  account: AccountT;
+  accounts: AccountT[];
+};
+/** An item plus the display-only label refs the app understands (see `labelRefs`). */
+export type LabeledItemT = ItemT & { labels: string[] };
 
 export type UpdateMe = Infer<typeof UpdateMeReq>;
 export type UpdateAccount = Infer<typeof UpdateAccountReq>;
@@ -213,6 +227,61 @@ const ItemDetail: Parser<{ item: ItemT; body: string | null }> = {
   },
 };
 const UrlRes: Parser<{ url: string }> = ConnectRes;
+
+function writeFlag(raw: unknown): { writeAccess?: boolean } {
+  const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : null;
+  if (typeof o?.writeAccess === 'boolean') return { writeAccess: o.writeAccess };
+  if (o?.access === 'write' || o?.access === 'read') return { writeAccess: o.access === 'write' };
+  return {};
+}
+function rawList(data: unknown, key: string): unknown[] {
+  const v = data && typeof data === 'object' ? (data as Record<string, unknown>)[key] : null;
+  return Array.isArray(v) ? v : [];
+}
+const AccountsWithAccess: Parser<{ accounts: AccountT[] }> = {
+  parse(data) {
+    const raw = rawList(data, 'accounts');
+    const res = AccountsRes.parse(data);
+    return { accounts: res.accounts.map((a, i) => ({ ...a, ...writeFlag(raw[i]) })) };
+  },
+};
+const CompleteWithAccess: Parser<CompleteConnectT> = {
+  parse(data) {
+    const res = CompleteConnectRes.parse(data);
+    const raw = rawList(data, 'accounts');
+    const accounts = res.accounts.map((a, i) => ({ ...a, ...writeFlag(raw[i]) }));
+    const first = (data as { account?: unknown } | null)?.account;
+    return {
+      ...res,
+      account: { ...res.account, ...writeFlag(first) },
+      // Older hubs send only `account`.
+      accounts: accounts.length ? accounts : [{ ...res.account, ...writeFlag(first) }],
+    };
+  },
+};
+
+/**
+ * Label refs the phone may show (never act on): calendar times, Slack channel, Jira key,
+ * GitHub repo. Anything else in `labels` is dropped here.
+ */
+const DISPLAY_REFS =
+  /^(gcal:(start|end):|mscal:(start|end):|slack:channel:|slack:thread:|jira:(key|status):|github:(repo|number|type):|gchat:space:)/;
+const LabeledItems: Parser<{ items: LabeledItemT[]; nextCursor: string | null }> = {
+  parse(data) {
+    const res = ItemsRes.parse(data);
+    const raw = rawList(data, 'items');
+    return {
+      nextCursor: res.nextCursor,
+      items: res.items.map((item, i) => {
+        const r = raw[i] as { labels?: unknown } | undefined;
+        const labels = Array.isArray(r?.labels)
+          ? r.labels.filter((l): l is string => typeof l === 'string' && DISPLAY_REFS.test(l))
+          : [];
+        return { ...item, labels };
+      }),
+    };
+  },
+};
 const UpdatedRes: Parser<{ updated: number }> = {
   parse(data) {
     const n = (data as { updated?: unknown } | null)?.updated;
@@ -242,12 +311,17 @@ export const api = {
     callVoid('POST', '/me/push-tokens', { token, platform }),
 
   // Accounts
-  accounts: () => call('GET', '/accounts', AccountsRes),
+  accounts: () => call('GET', '/accounts', AccountsWithAccess),
+  /** Services this hub offers, with their sources and options (Connect, Connectors, Scope). */
+  connectors: () => call('GET', '/connectors', ConnectorCatalogRes),
   connect: (provider: Provider, redirectUri?: string) =>
     call('POST', `/accounts/${provider}/connect`, UrlRes, { redirectUri }),
+  /** Separate consent for the write scope (send, post, update tickets). */
+  writeAccess: (id: string, redirectUri?: string) =>
+    call('POST', `/accounts/${id}/write-access`, UrlRes, { redirectUri }),
   /** Finishes a connect with this session; the hub checks it's the user who started it. */
   completeConnect: (pending: string) =>
-    call<CompleteConnectT>('POST', '/accounts/complete', CompleteConnectRes, { pending }),
+    call('POST', '/accounts/complete', CompleteWithAccess, { pending }),
   updateAccount: (id: string, patch: UpdateAccount) =>
     callMaybe('PATCH', `/accounts/${id}`, Account, patch),
   applySettingsToProvider: (id: string) =>
@@ -262,6 +336,8 @@ export const api = {
       ItemsRes,
     ),
   item: (id: string) => call('GET', `/items/${id}`, ItemDetail),
+  /** Calendar items with their label refs (for "Next up"). */
+  events: () => call('GET', `/items${qs({ kind: 'event', limit: 100 })}`, LabeledItems),
 
   // Tasks
   tasks: (q: Partial<TasksFilter>) =>

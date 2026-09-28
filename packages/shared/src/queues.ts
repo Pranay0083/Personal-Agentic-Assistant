@@ -14,8 +14,13 @@ export const QUEUES = {
 } as const;
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
 
+/** A connector source id (`mail`, `calendar`, `messages`, ...), see ConnectorInfo.sources. */
+const SourceId = z.string().min(1).max(64);
+
 export const SyncJob = z.object({
   accountId: z.uuid(),
+  /** Sync only this source. Omit to sync every enabled source of the account. */
+  source: SourceId.optional(),
   eventId: z.uuid().optional(),
   reason: z.enum(['webhook', 'catchup', 'manual']),
 });
@@ -24,6 +29,10 @@ export type SyncJob = z.infer<typeof SyncJob>;
 export const BackfillJob = z.object({
   accountId: z.uuid(),
   days: z.union([z.literal(7), z.literal(30), z.literal(90)]),
+  /** Source being backfilled. Omit to backfill every enabled source, one after another. */
+  source: SourceId.optional(),
+  /** Sources still to backfill after `source` finishes (set when a job fans out). */
+  then: z.array(SourceId).max(32).optional(),
   pageToken: z.string().optional(),
 });
 export type BackfillJob = z.infer<typeof BackfillJob>;

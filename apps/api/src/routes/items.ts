@@ -34,6 +34,7 @@ export function itemRoutes(app: FastifyInstance, ctx: Ctx) {
     const scope: SQL[] = [ownedItems(req.auth.userId)];
     if (q.accountId) scope.push(eq(items.accountId, q.accountId));
     if (q.kind) scope.push(eq(items.kind, q.kind));
+    if (q.provider) scope.push(eq(accounts.provider, q.provider));
 
     const page: SQL[] = [...scope];
     if (q.bucket) page.push(eq(items.bucket, q.bucket));

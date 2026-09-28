@@ -1,6 +1,7 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { accounts, auditLog, items, policies, secrets } from '@hub/db';
+import { accounts, auditLog, items, policies, secrets, subscriptions } from '@hub/db';
+import { ConnectorCatalogRes } from '@hub/shared/api';
 import { createGmailConnector, FakeGmailStore } from '@hub/connectors/gmail';
 import { strictPersonalPolicies } from '@hub/policy';
 import { setup, rawAccess, rawRefresh, type TestEnv } from './test-helpers';
@@ -426,7 +427,14 @@ describe('account settings', () => {
 
     // Filters merge: only sent keys change.
     res = await patch({ filters: { sent: false } });
-    expect(res.json().filters).toEqual({ inbox: true, sent: false, promotions: true, labels: [] });
+    expect(res.json().filters).toEqual({
+      inbox: true,
+      sent: false,
+      promotions: true,
+      labels: [],
+      sources: {},
+      options: {},
+    });
 
     await patch({ backfillDays: 7 });
     expect(mine()).toHaveLength(1);
@@ -506,5 +514,299 @@ describe('account settings', () => {
       .from(auditLog)
       .where(and(eq(auditLog.userId, userId), eq(auditLog.action, 'account.deleted')));
     expect(audits).toHaveLength(1);
+  });
+});
+
+describe('other providers: multi-identity consents', () => {
+  /** Full connect flow for the fake Atlassian connector; returns the complete response. */
+  async function connectSites(token: string, code: string) {
+    const state = await env.startConnect(token, '/accounts/atlassian/connect');
+    const cb = await env.callback(state, code, 'atlassian');
+    if (!cb.pending) throw new Error(`callback failed: ${cb.location || cb.res.body}`);
+    return env.complete(token, cb.pending);
+  }
+  const rowsOf = (userId: string) =>
+    env.t.db.select().from(accounts).where(eq(accounts.userId, userId));
+  const readSecretsOf = (userId: string) =>
+    env.t.db
+      .select()
+      .from(secrets)
+      .where(and(eq(secrets.userId, userId), eq(secrets.kind, 'oauth:atlassian')));
+
+  it('connect works for any implemented, configured provider; others are 400', async () => {
+    const { auth } = await env.signIn('providers@example.com');
+    const post = (p: string) =>
+      env.app.inject({ method: 'POST', url: `/accounts/${p}/connect`, headers: auth, payload: {} });
+    const ok = await post('atlassian');
+    expect(ok.statusCode).toBe(200);
+    expect(new URL(ok.json().url).searchParams.get('redirect_uri')).toBe(
+      'http://api.test/oauth/atlassian/callback',
+    );
+    for (const p of ['notion', 'slack', 'nope']) {
+      const r = await post(p);
+      expect(r.statusCode).toBe(400);
+      expect(r.json().error).toBe('unsupported_provider');
+    }
+  });
+
+  it('one consent adds one account per identity, all sharing one token secret', async () => {
+    const { token, userId } = await env.signIn('sites@example.com');
+    const res = await connectSites(token, 'fake-sites:sam:acme,beta,nameless');
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.access).toBe('read');
+    expect(body.accounts.map((a: { externalId: string }) => a.externalId)).toEqual([
+      'cloud-acme',
+      'cloud-beta',
+      'cloud-nameless',
+    ]);
+    expect(body.account).toEqual(body.accounts[0]);
+    // Site names become nicknames; a site without a name falls back to Work.
+    expect(body.accounts.map((a: { nickname: string }) => a.nickname)).toEqual([
+      'Acme',
+      'Beta',
+      'Work',
+    ]);
+    expect(new Set(body.accounts.map((a: { color: string }) => a.color)).size).toBe(3);
+    expect(body.accounts.every((a: { isPersonal: boolean }) => !a.isPersonal)).toBe(true);
+
+    const rows = await rowsOf(userId);
+    expect(new Set(rows.map((r) => r.tokenRef)).size).toBe(1);
+    expect(await readSecretsOf(userId)).toHaveLength(1);
+    const acme = rows.find((r) => r.externalId === 'cloud-acme')!;
+    expect(acme.routeKeys).toEqual(['cloud-acme']);
+    expect(acme.meta).toEqual({
+      siteUrl: 'https://acme.atlassian.example',
+      grantedScopes: ['read:jira-work', 'read:confluence-content.all', 'offline_access'],
+    });
+    expect(JSON.stringify(body)).not.toMatch(/RAW|token_ref|tokenRef|grantedScopes/);
+
+    // Reconnecting the same consent reuses the accounts and the one secret.
+    const again = await connectSites(token, 'fake-sites:sam:acme,beta,nameless');
+    expect(again.json().accounts.map((a: { id: string }) => a.id)).toEqual(
+      body.accounts.map((a: { id: string }) => a.id),
+    );
+    expect(await readSecretsOf(userId)).toHaveLength(1);
+    expect(await rowsOf(userId)).toHaveLength(3);
+
+    // A consent covering only some of them gets its own secret; the others keep theirs.
+    const partial = await connectSites(token, 'fake-sites:sam:acme');
+    expect(partial.json().accounts).toHaveLength(1);
+    const after = await rowsOf(userId);
+    const refOf = (ext: string) => after.find((r) => r.externalId === ext)!.tokenRef;
+    expect(refOf('cloud-acme')).not.toBe(refOf('cloud-beta'));
+    expect(refOf('cloud-beta')).toBe(refOf('cloud-nameless'));
+    expect(await readSecretsOf(userId)).toHaveLength(2);
+    expect(await env.secrets.getJson(refOf('cloud-acme')!)).toMatchObject({
+      accessToken: rawAccess('sam@acme'),
+    });
+  });
+
+  it('delete keeps a shared secret until its last account goes', async () => {
+    const { token, userId, auth } = await env.signIn('shared-del@example.com');
+    const res = await connectSites(token, 'fake-sites:kim:one,two');
+    const [one, two] = res.json().accounts as { id: string }[];
+    const [row] = await env.t.db.select().from(accounts).where(eq(accounts.id, one!.id));
+    const ref = row!.tokenRef!;
+    // Both also share a write token (as the executor would see after a shared write grant).
+    const writeRef = await env.secrets.put(userId, 'oauth:atlassian:write', '{"accessToken":"w"}');
+    await env.t.db
+      .update(accounts)
+      .set({ writeTokenRef: writeRef })
+      .where(inArray(accounts.id, [one!.id, two!.id]));
+    const revokeJobs = () =>
+      env.jobs.filter(
+        (j) => j.name === 'executor' && (j.data as { secretRef?: string }).secretRef === writeRef,
+      );
+    const del = (id: string) =>
+      env.app.inject({ method: 'DELETE', url: `/accounts/${id}`, headers: auth });
+
+    expect((await del(one!.id)).statusCode).toBe(204);
+    expect(env.sites.revoked).not.toContain(rawAccess('kim@one,two'));
+    expect(await env.t.db.select().from(secrets).where(eq(secrets.id, ref))).toHaveLength(1);
+    expect(revokeJobs()).toHaveLength(0);
+    const [still] = await env.t.db.select().from(accounts).where(eq(accounts.id, two!.id));
+    expect(still!.tokenRef).toBe(ref);
+    expect(still!.writeTokenRef).toBe(writeRef);
+
+    expect((await del(two!.id)).statusCode).toBe(204);
+    expect(env.sites.revoked).toContain(rawAccess('kim@one,two'));
+    expect(await env.t.db.select().from(secrets).where(eq(secrets.id, ref))).toHaveLength(0);
+    expect(revokeJobs()).toHaveLength(1);
+    const audits = await env.t.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.userId, userId), eq(auditLog.action, 'account.deleted')));
+    expect(
+      audits
+        .map((a) => a.details)
+        .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+    ).toEqual([
+      {
+        provider: 'atlassian',
+        revoked: false,
+        sharedTokenKept: true,
+        writeRevocationQueued: false,
+      },
+      { provider: 'atlassian', revoked: true, sharedTokenKept: false, writeRevocationQueued: true },
+    ]);
+  });
+
+  it('write access needs write actions and a matching identity; no mailbox login hint', async () => {
+    const { token, auth, userId } = await env.signIn('sites-write@example.com');
+    const res = await connectSites(token, 'fake-sites:lee:acme,beta');
+    const [acme] = res.json().accounts as { id: string }[];
+    const start = await env.app.inject({
+      method: 'POST',
+      url: `/accounts/${acme!.id}/write-access`,
+      headers: auth,
+      payload: {},
+    });
+    expect(start.statusCode).toBe(200);
+    expect(new URL(start.json().url).searchParams.get('login_hint')).toBeNull();
+
+    const writeFlow = async (code: string) => {
+      const state = await env.startConnect(token, `/accounts/${acme!.id}/write-access`);
+      const cb = await env.callback(state, code, 'atlassian');
+      return env.complete(token, cb.pending!);
+    };
+    const wrong = await writeFlow('fake-sites:lee:other');
+    expect(wrong.json().error).toBe('account_mismatch');
+    // A consent covering several sites grants write to the requested account only.
+    const ok = await writeFlow('fake-sites:lee:beta,acme');
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toMatchObject({ access: 'write', accounts: [{ id: acme!.id }] });
+    const rows = await rowsOf(userId);
+    expect(rows.find((r) => r.id === acme!.id)!.writeTokenRef).toBeTruthy();
+    expect(rows.find((r) => r.id !== acme!.id)!.writeTokenRef).toBeNull();
+
+    // A read-only connector refuses the write flow up front.
+    const gh = env.deps.getConnector('github')!;
+    const ex = await gh.connect.exchange({ code: 'x:lee:repo', redirectUri: '' });
+    const tokenRef = await env.secrets.put(userId, 'oauth:github', JSON.stringify(ex.tokens));
+    const [ghAccount] = await env.t.db
+      .insert(accounts)
+      .values({
+        userId,
+        provider: 'github',
+        nickname: 'GH',
+        color: '#1F6F6B',
+        externalId: 'cloud-repo',
+        tokenRef,
+      })
+      .returning();
+    const refused = await env.app.inject({
+      method: 'POST',
+      url: `/accounts/${ghAccount!.id}/write-access`,
+      headers: auth,
+      payload: {},
+    });
+    expect(refused.statusCode).toBe(400);
+    expect(refused.json().error).toBe('write_not_supported');
+  });
+
+  it('source toggles flip the subscription rows and enqueue a sync; ungranted sources stay off', async () => {
+    const { token, auth } = await env.signIn('toggles@example.com');
+    const res = await connectSites(token, 'fake-sites:ana:acme');
+    const accountId = res.json().account.id as string;
+    await env.t.db.insert(subscriptions).values([
+      { accountId, kind: 'jira', cursor: 'j1' },
+      { accountId, kind: 'confluence', cursor: 'c1', externalSubId: 'hook-1' },
+    ]);
+    const patch = (payload: object) =>
+      env.app.inject({ method: 'PATCH', url: `/accounts/${accountId}`, headers: auth, payload });
+    const enabled = async () =>
+      Object.fromEntries(
+        (
+          await env.t.db.select().from(subscriptions).where(eq(subscriptions.accountId, accountId))
+        ).map((r) => [r.kind, r.enabled]),
+      );
+    const syncs = () =>
+      env.jobs.filter(
+        (j) => j.name === 'sync' && (j.data as { accountId: string }).accountId === accountId,
+      );
+
+    const off = await patch({ filters: { sources: { confluence: false } } });
+    expect(off.statusCode).toBe(200);
+    expect(off.json().filters.sources).toEqual({ confluence: false });
+    expect(await enabled()).toEqual({ jira: true, confluence: false });
+    expect(syncs().map((j) => j.data)).toEqual([{ accountId, reason: 'manual' }]);
+
+    // Other keys merge; re-sending the same toggle changes nothing and enqueues nothing.
+    const same = await patch({
+      filters: { sources: { confluence: false }, options: { projects: 'mine' } },
+    });
+    expect(same.json().filters).toMatchObject({
+      sources: { confluence: false },
+      options: { projects: 'mine' },
+    });
+    expect(syncs()).toHaveLength(1);
+
+    env.setNow(new Date(env.now().getTime() + 1000));
+    await patch({ filters: { sources: { confluence: true } } });
+    expect(await enabled()).toEqual({ jira: true, confluence: true });
+    expect(syncs()).toHaveLength(2);
+
+    // Jira-only consent: confluence isn't granted, so turning it on doesn't enable it.
+    const narrow = await connectSites(token, 'fake-sites:ana:solo:read:jira-work');
+    const soloId = narrow.json().account.id as string;
+    await env.t.db
+      .insert(subscriptions)
+      .values({ accountId: soloId, kind: 'confluence', enabled: false });
+    await env.app.inject({
+      method: 'PATCH',
+      url: `/accounts/${soloId}`,
+      headers: auth,
+      payload: { filters: { sources: { confluence: true } } },
+    });
+    const [row] = await env.t.db
+      .select()
+      .from(subscriptions)
+      .where(eq(subscriptions.accountId, soloId));
+    expect(row!.enabled).toBe(false);
+  });
+});
+
+describe('GET /connectors', () => {
+  it('lists every provider: implemented from the connector, others as unavailable', async () => {
+    const { auth } = await env.signIn('catalog@example.com');
+    const res = await env.app.inject({ url: '/connectors', headers: auth });
+    expect(res.statusCode).toBe(200);
+    const body = ConnectorCatalogRes.parse(res.json());
+    expect(body.connectors.map((c) => c.provider)).toEqual([
+      'gmail',
+      'microsoft',
+      'slack',
+      'atlassian',
+      'notion',
+      'github',
+    ]);
+    const by = Object.fromEntries(body.connectors.map((c) => [c.provider, c]));
+    expect(by.gmail).toMatchObject({
+      name: 'Google',
+      available: true,
+      writeActions: ['gmail.send'],
+    });
+    expect(by.atlassian).toMatchObject({
+      name: 'Atlassian',
+      multiAccountNote: 'One per site',
+      available: true,
+      writeActions: ['jira.comment'],
+    });
+    expect(by.atlassian!.sources.map((s) => s.id)).toEqual(['jira', 'confluence']);
+    // Server-side details (required scopes) are not exposed.
+    expect(JSON.stringify(res.json())).not.toContain('read:jira-work');
+    expect(by.notion).toMatchObject({ available: false });
+    expect(by.notion!.sources).toHaveLength(2);
+    for (const p of ['microsoft', 'slack'] as const) {
+      expect(by[p]).toMatchObject({ available: false, sources: [], options: [], writeActions: [] });
+      expect(by[p]!.name.length).toBeGreaterThan(0);
+      expect(by[p]!.covers.length).toBeGreaterThan(0);
+    }
+    expect(by.slack!.multiAccountNote).toBe('One per workspace');
+  });
+
+  it('requires a session', async () => {
+    expect((await env.app.inject({ url: '/connectors' })).statusCode).toBe(401);
   });
 });

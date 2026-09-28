@@ -1,5 +1,12 @@
 import { useMemo, useState } from 'react';
 import { View } from 'react-native';
+import {
+  PROPOSAL_PAYLOADS,
+  type EmailSendPayload,
+  type JiraCommentPayload,
+  type JiraTransitionPayload,
+  type SlackPostPayload,
+} from '@hub/shared';
 import { useAccessRequests, useDecideAccess, useDecideProposal, useProposals } from '@/lib/queries';
 import { useAccountMap } from '@/lib/hooks';
 import {
@@ -8,6 +15,7 @@ import {
   hhmm2,
   minutesLabel,
   serviceName,
+  shortTime,
   sourceLabel,
 } from '@/lib/format';
 import { ApiError, errorMessage, type AccessRequestT, type ProposalT } from '@/lib/api';
@@ -18,12 +26,24 @@ import { EmptyState, ErrorState, LoadingState, Notice, Screen, Sheet } from '@/c
 
 type Decided = { message: string; tone: 'teal' | 'amber' };
 
-const SENDS = new Set(['gmail.send', 'slack.post']);
+type Action = ProposalT['action'];
+const SENDS = new Set<Action>(['gmail.send', 'outlook.send', 'slack.post']);
 
 function actionSource(p: ProposalT, provider: string | undefined): string {
-  if (p.action.startsWith('jira.')) return 'JIRA';
-  if (p.action.startsWith('slack.')) return 'SLACK';
-  return sourceLabel(provider ?? 'gmail');
+  switch (p.action) {
+    case 'gmail.send':
+    case 'gmail.label':
+      return 'GMAIL';
+    case 'outlook.send':
+      return 'OUTLOOK';
+    case 'slack.post':
+      return 'SLACK';
+    case 'jira.transition':
+    case 'jira.comment':
+      return 'JIRA';
+    default:
+      return sourceLabel(provider);
+  }
 }
 
 function str(v: unknown): string {
@@ -33,19 +53,80 @@ function str(v: unknown): string {
   return JSON.stringify(v);
 }
 
-function approvedMessage(p: ProposalT, payload: Record<string, unknown>): string {
-  switch (p.action) {
-    case 'gmail.send': {
-      const to = Array.isArray(payload.to) ? (payload.to as unknown[]).map(String) : [];
-      const who = to.length
-        ? `${to[0]}${to.length > 1 ? ` and ${to.length - 1} more` : ''}`
-        : 'the recipients';
-      return `Approved. Sending to ${who}. Logged in Activity.`;
+/**
+ * The payload parsed with the same schema the API and executor use. `null` when it doesn't
+ * match, so the card falls back to showing every field as-is.
+ */
+type Typed =
+  | { action: 'gmail.send' | 'outlook.send'; data: EmailSendPayload }
+  | { action: 'slack.post'; data: SlackPostPayload }
+  | { action: 'jira.transition'; data: JiraTransitionPayload }
+  | { action: 'jira.comment'; data: JiraCommentPayload };
+
+function typed(action: Action, payload: Record<string, unknown>): Typed | null {
+  switch (action) {
+    case 'gmail.send':
+    case 'outlook.send': {
+      const r = PROPOSAL_PAYLOADS[action].safeParse(payload);
+      return r.success ? { action, data: r.data } : null;
     }
+    case 'slack.post': {
+      const r = PROPOSAL_PAYLOADS[action].safeParse(payload);
+      return r.success ? { action, data: r.data } : null;
+    }
+    case 'jira.transition': {
+      const r = PROPOSAL_PAYLOADS[action].safeParse(payload);
+      return r.success ? { action, data: r.data } : null;
+    }
+    case 'jira.comment': {
+      const r = PROPOSAL_PAYLOADS[action].safeParse(payload);
+      return r.success ? { action, data: r.data } : null;
+    }
+    default:
+      return null;
+  }
+}
+
+/** Slack conversation id as the user can recognise it. The id itself is what gets used. */
+function slackChannel(ch: string): string {
+  if (/^D[A-Z0-9]{6,}$/.test(ch)) return `Direct message · ${ch}`;
+  if (/^[CG][A-Z0-9]{6,}$/.test(ch)) return ch;
+  return ch.startsWith('#') ? ch : `#${ch}`;
+}
+
+function slackThread(ts: string | undefined): string | null {
+  if (!ts) return null;
+  const secs = Number(ts);
+  return Number.isFinite(secs) && secs > 0
+    ? `In thread from ${shortTime(new Date(secs * 1000).toISOString())}`
+    : 'In thread';
+}
+
+/** Card heading. Ticket changes are described from the payload itself, not the agent's title. */
+function heading(p: ProposalT, t: Typed | null): string {
+  if (t?.action === 'jira.transition') return `Move ${t.data.issueKey} to ${t.data.toStatus}`;
+  if (t?.action === 'jira.comment') return `Comment on ${t.data.issueKey}`;
+  return p.title;
+}
+
+function recipients(to: string[]): string {
+  return to.length
+    ? `${to[0]}${to.length > 1 ? ` and ${to.length - 1} more` : ''}`
+    : 'the recipients';
+}
+
+function approvedMessage(p: ProposalT, payload: Record<string, unknown>): string {
+  const t = typed(p.action, payload);
+  switch (t?.action) {
+    case 'gmail.send':
+    case 'outlook.send':
+      return `Approved. Sending to ${recipients(t.data.to)}. Logged in Activity.`;
     case 'slack.post':
-      return 'Approved. Posting to Slack. Logged in Activity.';
+      return `Approved. Posting to ${slackChannel(t.data.channel)}. Logged in Activity.`;
     case 'jira.transition':
-      return 'Approved. Updating Jira. Logged in Activity.';
+      return `Approved. Moving ${t.data.issueKey} to ${t.data.toStatus}. Logged in Activity.`;
+    case 'jira.comment':
+      return `Approved. Commenting on ${t.data.issueKey}. Logged in Activity.`;
     default:
       return 'Approved. Logged in Activity.';
   }
@@ -86,7 +167,7 @@ function connectError(e: unknown): { message: string; final: boolean } | null {
 }
 
 function rejectedMessage(p: ProposalT): string {
-  if (SENDS.has(p.action)) return 'Rejected. Draft discarded.';
+  if (SENDS.has(p.action) || p.action === 'jira.comment') return 'Rejected. Draft discarded.';
   if (p.action.startsWith('jira.')) return 'Rejected. Jira unchanged.';
   return 'Rejected. Nothing was changed.';
 }
@@ -296,47 +377,22 @@ function Outcome({ d }: { d: Decided }) {
   );
 }
 
-/** Shows exactly what will be sent or changed. */
-function PayloadView({ p }: { p: ProposalT }) {
-  const pl = p.payload;
-  if (p.action === 'gmail.send' || p.action === 'slack.post') {
-    const head: [string, string][] =
-      p.action === 'gmail.send'
-        ? [
-            ['To', str(pl.to)],
-            ...(str(pl.cc) ? ([['Cc', str(pl.cc)]] as [string, string][]) : []),
-            ['Subject', str(pl.subject)],
-          ]
-        : [['Channel', str(pl.channel ?? pl.channelId)]];
-    const body = str(p.action === 'gmail.send' ? pl.body : (pl.text ?? pl.body));
-    return (
-      <View style={{ gap: 8 }}>
-        <View style={{ gap: 2 }}>
-          {head
-            .filter(([, v]) => v)
-            .map(([k, v]) => (
-              <Txt key={k} size={12} color={colors.secondary} numberOfLines={2}>
-                <Txt size={12} weight={600} color={colors.secondary}>{`${k}: `}</Txt>
-                {v}
-              </Txt>
-            ))}
-        </View>
-        <View
-          style={{
-            paddingVertical: 10,
-            paddingHorizontal: 12,
-            borderRadius: 10,
-            backgroundColor: colors.bg,
-          }}
-        >
-          <Txt size={13} lh={1.45} color={colors.body} selectable>
-            {body || '(empty message)'}
-          </Txt>
-        </View>
-      </View>
-    );
-  }
-  const entries = Object.entries(pl);
+function Meta({ rows }: { rows: [string, string][] }) {
+  const shown = rows.filter(([, v]) => v);
+  if (!shown.length) return null;
+  return (
+    <View style={{ gap: 2 }}>
+      {shown.map(([k, v]) => (
+        <Txt key={k} size={12} color={colors.secondary} numberOfLines={2} selectable>
+          <Txt size={12} weight={600} color={colors.secondary}>{`${k}: `}</Txt>
+          {v}
+        </Txt>
+      ))}
+    </View>
+  );
+}
+
+function BodyBox({ text, empty = '(empty message)' }: { text: string; empty?: string }) {
   return (
     <View
       style={{
@@ -344,23 +400,117 @@ function PayloadView({ p }: { p: ProposalT }) {
         paddingHorizontal: 12,
         borderRadius: 10,
         backgroundColor: colors.bg,
-        gap: 4,
       }}
     >
-      {entries.length === 0 ? (
-        <Txt size={13} color={colors.body}>
-          No details.
-        </Txt>
-      ) : (
-        entries.map(([k, v]) => (
-          <Txt key={k} size={13} lh={1.45} color={colors.body} selectable>
-            <Txt size={13} weight={600} color={colors.body}>{`${k}: `}</Txt>
-            {str(v)}
-          </Txt>
-        ))
-      )}
+      <Txt size={13} lh={1.45} color={colors.body} selectable>
+        {text || empty}
+      </Txt>
     </View>
   );
+}
+
+/** Shows exactly what will be sent or changed. */
+function PayloadView({ p }: { p: ProposalT }) {
+  const t = typed(p.action, p.payload);
+  switch (t?.action) {
+    case 'gmail.send':
+    case 'outlook.send':
+      return (
+        <View style={{ gap: 8 }}>
+          <Meta
+            rows={[
+              ['To', t.data.to.join(', ')],
+              ['Cc', t.data.cc.join(', ')],
+              ['Subject', t.data.subject],
+            ]}
+          />
+          <BodyBox text={t.data.body} />
+        </View>
+      );
+    case 'slack.post':
+      return (
+        <View style={{ gap: 8 }}>
+          <Meta
+            rows={[
+              ['Channel', slackChannel(t.data.channel)],
+              ['Thread', slackThread(t.data.threadTs) ?? ''],
+            ]}
+          />
+          <BodyBox text={t.data.text} />
+        </View>
+      );
+    case 'jira.transition':
+      return (
+        <Txt size={13} lh={1.45} color={colors.body} selectable>
+          {t.data.comment ? `Also adds a comment: "${t.data.comment}"` : 'No comment added.'}
+        </Txt>
+      );
+    case 'jira.comment':
+      return <BodyBox text={t.data.body} empty="(empty comment)" />;
+    default:
+      return <RawPayload p={p} />;
+  }
+}
+
+/** Any other action, or a payload that doesn't match its schema: every field, as-is. */
+function RawPayload({ p }: { p: ProposalT }) {
+  const entries = Object.entries(p.payload);
+  const known = p.action in PROPOSAL_PAYLOADS;
+  return (
+    <View style={{ gap: 8 }}>
+      {known ? (
+        <Txt size={12} weight={600} color={colors.amberDark}>
+          {"This draft doesn't match what your hub expects, so approving it may fail."}
+        </Txt>
+      ) : null}
+      <View
+        style={{
+          paddingVertical: 10,
+          paddingHorizontal: 12,
+          borderRadius: 10,
+          backgroundColor: colors.bg,
+          gap: 4,
+        }}
+      >
+        {entries.length === 0 ? (
+          <Txt size={13} color={colors.body}>
+            No details.
+          </Txt>
+        ) : (
+          entries.map(([k, v]) => (
+            <Txt key={k} size={13} lh={1.45} color={colors.body} selectable>
+              <Txt size={13} weight={600} color={colors.body}>{`${k}: `}</Txt>
+              {str(v)}
+            </Txt>
+          ))
+        )}
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Text fields the user may rewrite before approving. Recipients, channels, threads, issue
+ * keys and transitions are never editable: they come from the stored item, not a model.
+ */
+const EDITABLE: Partial<
+  Record<Action, { key: string; label: string; long: boolean; required?: boolean }[]>
+> = {
+  'gmail.send': [
+    { key: 'subject', label: 'Subject', long: false },
+    { key: 'body', label: 'Message', long: true },
+  ],
+  'outlook.send': [
+    { key: 'subject', label: 'Subject', long: false },
+    { key: 'body', label: 'Message', long: true },
+  ],
+  'slack.post': [{ key: 'text', label: 'Message', long: true, required: true }],
+  'jira.transition': [{ key: 'comment', label: 'Comment (optional)', long: true }],
+  'jira.comment': [{ key: 'body', label: 'Comment', long: true, required: true }],
+};
+
+function canEdit(p: ProposalT): boolean {
+  return !!EDITABLE[p.action]?.length && typed(p.action, p.payload) !== null;
 }
 
 function ProposalCard({
@@ -394,7 +544,7 @@ function ProposalCard({
         <SourceTag label={source} />
       </View>
       <Txt size={16} weight={600} accessibilityRole="header">
-        {p.title}
+        {heading(p, typed(p.action, p.payload))}
       </Txt>
       <PayloadView p={p} />
       {decided ? (
@@ -407,7 +557,9 @@ function ProposalCard({
             grow
             onPress={onApprove}
           />
-          <Button label="Edit" variant="outline" weight={400} onPress={onEdit} />
+          {canEdit(p) ? (
+            <Button label="Edit" variant="outline" weight={400} onPress={onEdit} />
+          ) : null}
           <Button
             label="Reject"
             variant="ghost"
@@ -566,8 +718,13 @@ function EditSheet({
   onClose: () => void;
   onApprove: (payload: Record<string, unknown>) => void;
 }) {
+  const sends = proposal ? SENDS.has(proposal.action) : false;
   return (
-    <Sheet visible={!!proposal} onClose={onClose} title="Edit before sending">
+    <Sheet
+      visible={!!proposal}
+      onClose={onClose}
+      title={sends ? 'Edit before sending' : 'Edit before approving'}
+    >
       {proposal ? <EditForm key={proposal.id} p={proposal} onApprove={onApprove} /> : null}
     </Sheet>
   );
@@ -580,52 +737,87 @@ function EditForm({
   p: ProposalT;
   onApprove: (payload: Record<string, unknown>) => void;
 }) {
-  // Only string fields are editable; recipients and ids stay as the agent proposed them.
-  const editable = Object.entries(p.payload).filter(
-    ([k, v]) =>
-      typeof v === 'string' && !['inReplyTo', 'threadId', 'issueKey', 'channelId'].includes(k),
+  const fields = EDITABLE[p.action] ?? [];
+  const t = typed(p.action, p.payload);
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(fields.map((f) => [f.key, str(p.payload[f.key])])),
   );
-  const order = ['subject', 'body', 'text', 'comment'];
-  editable.sort(([a], [b]) => ((order.indexOf(a) + 99) % 99) - ((order.indexOf(b) + 99) % 99));
-  const [values, setValues] = useState<Record<string, string>>(
-    Object.fromEntries(editable.map(([k, v]) => [k, v as string])),
-  );
+  const [invalid, setInvalid] = useState<string | null>(null);
 
-  const to = p.action === 'gmail.send' ? str(p.payload.to) : null;
+  // What stays exactly as proposed, shown read-only above the editable text.
+  const fixed: [string, string][] =
+    t?.action === 'gmail.send' || t?.action === 'outlook.send'
+      ? [
+          ['To', t.data.to.join(', ')],
+          ['Cc', t.data.cc.join(', ')],
+        ]
+      : t?.action === 'slack.post'
+        ? [
+            ['Channel', slackChannel(t.data.channel)],
+            ['Thread', slackThread(t.data.threadTs) ?? ''],
+          ]
+        : t?.action === 'jira.transition'
+          ? [
+              ['Issue', t.data.issueKey],
+              ['Moves to', t.data.toStatus],
+            ]
+          : t?.action === 'jira.comment'
+            ? [['Issue', t.data.issueKey]]
+            : [];
+
+  const missing = fields.some((f) => f.required && !(values[f.key] ?? '').trim());
+
+  const approve = () => {
+    const next: Record<string, unknown> = { ...p.payload };
+    for (const f of fields) {
+      const v = values[f.key] ?? '';
+      // An empty optional comment means "no comment", not an empty one.
+      if (!f.required && f.key === 'comment' && !v.trim()) delete next[f.key];
+      else next[f.key] = v;
+    }
+    const schema = (
+      PROPOSAL_PAYLOADS as Record<string, { safeParse(d: unknown): { success: boolean } }>
+    )[p.action];
+    if (schema && !schema.safeParse(next).success) {
+      setInvalid(
+        p.action === 'slack.post'
+          ? 'Slack messages must be 1 to 4,000 characters.'
+          : "That text can't be sent as it is. Check its length and try again.",
+      );
+      return;
+    }
+    onApprove(next);
+  };
+
   return (
     <View style={{ gap: 12 }}>
-      {to ? (
-        <Txt size={13} color={colors.secondary}>
-          <Txt size={13} weight={600} color={colors.secondary}>
-            {'To: '}
-          </Txt>
-          {to}
-        </Txt>
-      ) : null}
-      {editable.map(([k]) => {
-        const long = k === 'body' || k === 'text' || k === 'comment';
-        return (
-          <Field
-            key={k}
-            label={k.charAt(0).toUpperCase() + k.slice(1)}
-            value={values[k] ?? ''}
-            onChangeText={(v) => setValues((s) => ({ ...s, [k]: v }))}
-            multiline={long}
-            autoCorrect
-            style={long ? { minHeight: 160, paddingTop: 10, textAlignVertical: 'top' } : undefined}
-          />
-        );
-      })}
-      {editable.length === 0 ? (
+      <Meta rows={fixed} />
+      {fields.map((f) => (
+        <Field
+          key={f.key}
+          label={f.label}
+          value={values[f.key] ?? ''}
+          onChangeText={(v) => {
+            setInvalid(null);
+            setValues((s) => ({ ...s, [f.key]: v }));
+          }}
+          multiline={f.long}
+          autoCorrect
+          style={f.long ? { minHeight: 160, paddingTop: 10, textAlignVertical: 'top' } : undefined}
+        />
+      ))}
+      {fields.length === 0 ? (
         <Txt size={13} color={colors.secondary}>
           This action has no text to edit.
         </Txt>
       ) : null}
+      {invalid ? <Notice text={invalid} /> : null}
       <Button
         label={SENDS.has(p.action) ? 'Approve & send' : 'Approve'}
         variant="teal"
         size="lg"
-        onPress={() => onApprove({ ...p.payload, ...values })}
+        disabled={missing}
+        onPress={approve}
       />
     </View>
   );

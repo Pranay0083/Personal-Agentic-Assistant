@@ -1,12 +1,17 @@
 import { useState } from 'react';
-import { View } from 'react-native';
-import { router } from 'expo-router';
+import { Pressable, View } from 'react-native';
+import { router, useLocalSearchParams } from 'expo-router';
 import type { Provider } from '@hub/shared';
-import { useAccounts } from '@/lib/queries';
-import { useConnectAccount } from '@/lib/connect';
+import { useServices } from '@/lib/hooks';
+import {
+  connectedMessage,
+  noticeFromParams,
+  useConnectAccount,
+  type ConnectedNotice,
+} from '@/lib/connect';
 import { errorMessage } from '@/lib/api';
-import { MAX_ACCOUNTS_PER_SERVICE, SERVICES } from '@/lib/format';
-import { colors } from '@/theme';
+import { coversText, MAX_ACCOUNTS_PER_SERVICE } from '@/lib/format';
+import { colors, HIT } from '@/theme';
 import { Txt } from '@/components/Txt';
 import { Button, Card, Dot, Row } from '@/components/ui';
 import {
@@ -20,40 +25,53 @@ import {
 } from '@/components/layout';
 import { Check } from '@/components/icons';
 
-export default function ConnectScreen() {
-  const accounts = useAccounts();
-  const connect = useConnectAccount();
-  const [pending, setPending] = useState<Provider | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const list = accounts.data?.accounts ?? [];
+type Msg = { text: string; tone: 'warn' | 'teal' };
 
-  const add = (provider: Provider, available: boolean) => {
-    setNotice(null);
-    if (!available) {
-      setNotice(
-        `${SERVICES.find((s) => s.provider === provider)?.name} is coming soon. Google works today.`,
-      );
-      return;
-    }
+export default function ConnectScreen() {
+  const { catalog, accounts, groups } = useServices();
+  const connect = useConnectAccount();
+  const params = useLocalSearchParams<ConnectedNotice>();
+  const [pending, setPending] = useState<Provider | null>(null);
+  const [msg, setMsg] = useState<Msg | null>(() => {
+    const text = noticeFromParams(params);
+    return text ? { text, tone: 'teal' } : null;
+  });
+  const total = accounts.data?.accounts.length ?? 0;
+
+  const notSetUp = (name: string) =>
+    setMsg({
+      text: `${name} isn't set up on your hub yet. Add its client ID and secret to the hub's config (see .env.example), then restart it.`,
+      tone: 'warn',
+    });
+
+  const add = (provider: Provider) => {
+    setMsg(null);
     setPending(provider);
     connect.mutate(provider, {
       onSuccess: (out) => {
-        if (!out.ok && out.message) setNotice(out.message);
+        if (!out.ok) {
+          if (out.message) setMsg({ text: out.message, tone: 'warn' });
+          return;
+        }
+        const text = connectedMessage(out);
+        if (text) setMsg({ text, tone: 'teal' });
       },
-      onError: (e) => setNotice(errorMessage(e)),
+      onError: (e) => setMsg({ text: errorMessage(e), tone: 'warn' }),
       onSettled: () => setPending(null),
     });
   };
+
+  const loading = catalog.isPending || accounts.isPending;
 
   return (
     <Screen
       footer={
         <>
-          {notice ? <Notice text={notice} /> : null}
+          {msg ? <Notice text={msg.text} tone={msg.tone} /> : null}
           <Button
-            label={`Continue · ${list.length} ${list.length === 1 ? 'account' : 'accounts'}`}
+            label={`Continue · ${total} ${total === 1 ? 'account' : 'accounts'}`}
             size="lg"
-            onPress={() => router.push(list.length ? '/scope' : '/presets')}
+            onPress={() => router.push(total ? '/scope' : '/presets')}
           />
         </>
       }
@@ -63,19 +81,27 @@ export default function ConnectScreen() {
         title="Connect your accounts"
         subtitle="Add as many as you have, like work and personal Gmail. Each one gets its own settings."
       />
-      {accounts.isPending ? (
-        <LoadingState compact label="Loading your accounts…" />
+      {loading ? (
+        <LoadingState compact label="Loading your services…" />
       ) : accounts.isError ? (
         <ErrorState error={accounts.error} onRetry={() => void accounts.refetch()} />
+      ) : catalog.isError ? (
+        <ErrorState
+          title="Couldn't load your hub's services"
+          error={catalog.error}
+          onRetry={() => void catalog.refetch()}
+        />
+      ) : groups.length === 0 ? (
+        <Notice text="Your hub has no services set up yet. Add a provider's client ID and secret to its config, then restart it." />
       ) : (
         <Card radius={16}>
-          {SERVICES.map((s, i) => {
-            const mine = list.filter((a) => a.provider === s.provider);
+          {groups.map(({ info, accounts: mine }, i) => {
             const has = mine.length > 0;
             const full = mine.length >= MAX_ACCOUNTS_PER_SERVICE;
+            const covers = coversText(info.covers, info.multiAccountNote);
             return (
               <Row
-                key={s.provider}
+                key={info.provider}
                 first={i === 0}
                 style={{ paddingHorizontal: 14, paddingTop: 4, paddingBottom: has ? 10 : 4 }}
               >
@@ -84,25 +110,33 @@ export default function ConnectScreen() {
                 >
                   <View style={{ flex: 1, gap: 1 }}>
                     <Txt size={15} weight={600}>
-                      {s.name}
+                      {info.name}
                     </Txt>
-                    <Txt size={12} color={colors.secondary}>
-                      {s.covers}
-                    </Txt>
+                    {covers ? (
+                      <Txt size={12} color={colors.secondary}>
+                        {covers}
+                      </Txt>
+                    ) : null}
                   </View>
-                  {!s.available ? (
-                    <Button
-                      label="Coming soon"
-                      variant="outline"
-                      size="md"
-                      radius={10}
-                      weight={500}
-                      textSize={13}
-                      onPress={() => add(s.provider, false)}
-                    />
+                  {!info.available ? (
+                    <Pressable
+                      onPress={() => notSetUp(info.name)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${info.name}: not set up on your hub`}
+                      style={{
+                        minHeight: HIT,
+                        maxWidth: 120,
+                        justifyContent: 'center',
+                        alignItems: 'flex-end',
+                      }}
+                    >
+                      <Txt size={12} weight={500} color={colors.secondary} align="right">
+                        Not set up on your hub
+                      </Txt>
+                    </Pressable>
                   ) : full ? (
                     <Txt size={13} weight={600} color={colors.secondary}>
-                      Max 4
+                      {`Max ${MAX_ACCOUNTS_PER_SERVICE}`}
                     </Txt>
                   ) : has ? (
                     <Button
@@ -111,8 +145,9 @@ export default function ConnectScreen() {
                       size="md"
                       radius={10}
                       textSize={13}
-                      loading={pending === s.provider}
-                      onPress={() => add(s.provider, true)}
+                      loading={pending === info.provider}
+                      disabled={pending !== null && pending !== info.provider}
+                      onPress={() => add(info.provider)}
                       style={{ paddingHorizontal: 12 }}
                     />
                   ) : (
@@ -121,8 +156,9 @@ export default function ConnectScreen() {
                       size="md"
                       radius={10}
                       textSize={13}
-                      loading={pending === s.provider}
-                      onPress={() => add(s.provider, true)}
+                      loading={pending === info.provider}
+                      disabled={pending !== null && pending !== info.provider}
+                      onPress={() => add(info.provider)}
                     />
                   )}
                 </View>
@@ -144,7 +180,7 @@ export default function ConnectScreen() {
                     <Txt size={13} color={colors.secondary} style={{ flex: 1 }} numberOfLines={1}>
                       {a.externalId}
                     </Txt>
-                    {a.status === 'reconnect' ? (
+                    {a.status === 'reconnect' || a.status === 'disconnected' ? (
                       <Txt size={12} weight={600} color={colors.amberDark}>
                         Reconnect
                       </Txt>

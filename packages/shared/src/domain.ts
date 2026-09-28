@@ -47,8 +47,33 @@ export const Account = z.object({
   backfillDays: BackfillDays,
   lastSyncedAt: z.string().nullable(),
   createdAt: z.string(),
+  /** The separate write consent ("Allow sending") has been granted. */
+  writeAccess: z.boolean().default(false),
+  /** A setup step the user still has to do at the provider (GitHub App install). */
+  setup: z.object({ label: z.string(), url: z.string() }).nullable().default(null),
 });
 export type Account = z.infer<typeof Account>;
+
+/** Label prefixes the API passes through to the app as `Item.refs`. Everything else stays server-side. */
+export const ITEM_REF_PREFIXES = [
+  'hub:mention',
+  'hub:dm',
+  'hub:review_requested',
+  'hub:assigned',
+  'hub:blocking:',
+  'hub:rsvp_needed',
+  'hub:from_me',
+  'gcal:start:',
+  'gcal:end:',
+  'mscal:start:',
+  'mscal:end:',
+  'slack:channel_name:',
+  'jira:key:',
+  'jira:status:',
+  'github:repo:',
+  'github:number:',
+  'github:type:',
+] as const;
 
 export const ItemKind = z.enum(['email', 'chat', 'ticket', 'note', 'event', 'file', 'code']);
 export type ItemKind = z.infer<typeof ItemKind>;
@@ -69,6 +94,12 @@ export const Item = z.object({
   bucket: ItemBucket.nullable(),
   /** Short status chip shown in the Inbox, e.g. "Task created", "Draft ready". */
   statusLabel: z.string().nullable(),
+  /**
+   * Display-safe references and signals from the connector (e.g. `gcal:start:<iso>`,
+   * `jira:key:PROJ-1`, `slack:channel_name:api`, `hub:mention`). A filtered subset of the
+   * item's labels; see ITEM_REF_PREFIXES.
+   */
+  refs: z.array(z.string()).default([]),
   receivedAt: z.string(),
 });
 export type Item = z.infer<typeof Item>;

@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMeRequired } from '@/lib/auth';
 import { qk, usePermissions, useSetPolicy, useUpdateMe } from '@/lib/queries';
 import { useAccountMap, useNow } from '@/lib/hooks';
-import { LEVEL_LABEL, presetLabel } from '@/lib/format';
+import { LEVEL_LABEL, permissionLabel, presetLabel, serviceName } from '@/lib/format';
 import { api, errorMessage, type GrantT, type PermissionRowT, type PermissionsT } from '@/lib/api';
 import type { PolicyLevelT } from '@/lib/types';
 import { colors } from '@/theme';
@@ -52,8 +52,26 @@ const RESOURCE_NAME: Record<string, string> = {
   'draft.write': 'Write drafts',
   'message.send': 'Send messages',
   'ticket.update': 'Update tickets',
-  'email.label': 'Label email',
+  'email.label': 'Label and archive',
 };
+
+/**
+ * Row name on the phone: the service for data rows ("Google Chat", "OneDrive"), the action
+ * for action rows. Account-specific rows add the nickname. Falls back to the API's label.
+ */
+function rowLabel(r: PermissionRowT, isData: boolean, nickname: string | undefined): string {
+  const base = isData
+    ? permissionLabel(r.provider, r.resource)
+    : (RESOURCE_NAME[r.resource] ?? null);
+  if (!base) return r.label;
+  return r.accountId ? `${base} · ${nickname ?? r.label.split(' · ').pop() ?? ''}` : base;
+}
+
+/** Subtitle: what the level covers for data rows, the service for action rows. */
+function rowScope(r: PermissionRowT, isData: boolean): string {
+  const scope = !isData && r.provider ? serviceName(r.provider) : r.scope;
+  return r.source === 'grant' ? `${scope} · temporary` : scope;
+}
 
 function nextLevel(level: PolicyLevelT, cycle: PolicyLevelT[]): PolicyLevelT {
   const i = cycle.indexOf(level);
@@ -117,7 +135,10 @@ export default function PermissionsScreen() {
 
   const grantLabel = (g: GrantT) => {
     const acct = g.accountId ? accounts.get(g.accountId) : undefined;
-    const res = RESOURCE_NAME[g.resource] ?? g.resource;
+    const res =
+      (acct ? permissionLabel(acct.provider, g.resource) : null) ??
+      RESOURCE_NAME[g.resource] ??
+      g.resource;
     return `Temporary: ${res} ${LEVEL_LABEL[g.level].toLowerCase()}${acct ? ` · ${acct.nickname}` : ''}`;
   };
   const expiresIn = (g: GrantT) => {
@@ -128,46 +149,53 @@ export default function PermissionsScreen() {
     return `Expires in ${h}h ${min % 60}m`;
   };
 
-  const renderRows = (rows: PermissionRowT[], order: PolicyLevelT[]) =>
-    rows.map((r, i) => (
-      <Row
-        key={`${r.resource}:${r.provider ?? ''}:${r.accountId ?? ''}`}
-        first={i === 0}
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 12,
-          minHeight: 52,
-          paddingVertical: 2,
-          paddingLeft: 14,
-          paddingRight: 10,
-        }}
-      >
-        <View style={{ flex: 1, gap: 2, paddingVertical: 6 }}>
-          <Txt size={15} weight={500}>
-            {r.label}
-          </Txt>
-          <Txt size={12} color={colors.secondary}>
-            {r.source === 'grant' ? `${r.scope} · temporary` : r.scope}
-          </Txt>
-        </View>
-        <Pressable
-          onPress={() => cycle(r, order)}
-          accessibilityRole="button"
-          accessibilityLabel={`${r.label}: ${LEVEL_LABEL[r.level]}. Tap to change.`}
-          disabled={r.source === 'grant'}
-          style={{ minHeight: 44, justifyContent: 'center' }}
+  const renderRows = (rows: PermissionRowT[], order: PolicyLevelT[], isData: boolean) =>
+    rows.map((r, i) => {
+      const label = rowLabel(
+        r,
+        isData,
+        r.accountId ? accounts.get(r.accountId)?.nickname : undefined,
+      );
+      return (
+        <Row
+          key={`${r.resource}:${r.provider ?? ''}:${r.accountId ?? ''}`}
+          first={i === 0}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+            minHeight: 52,
+            paddingVertical: 2,
+            paddingLeft: 14,
+            paddingRight: 10,
+          }}
         >
-          <Pill
-            label={LEVEL_LABEL[r.level]}
-            tone={LEVEL_TONE[r.level]}
-            size={12}
-            padH={11}
-            padV={5}
-          />
-        </Pressable>
-      </Row>
-    ));
+          <View style={{ flex: 1, gap: 2, paddingVertical: 6 }}>
+            <Txt size={15} weight={500}>
+              {label}
+            </Txt>
+            <Txt size={12} color={colors.secondary}>
+              {rowScope(r, isData)}
+            </Txt>
+          </View>
+          <Pressable
+            onPress={() => cycle(r, order)}
+            accessibilityRole="button"
+            accessibilityLabel={`${label}: ${LEVEL_LABEL[r.level]}. Tap to change.`}
+            disabled={r.source === 'grant'}
+            style={{ minHeight: 44, justifyContent: 'center' }}
+          >
+            <Pill
+              label={LEVEL_LABEL[r.level]}
+              tone={LEVEL_TONE[r.level]}
+              size={12}
+              padH={11}
+              padV={5}
+            />
+          </Pressable>
+        </Row>
+      );
+    });
 
   return (
     <Screen
@@ -251,7 +279,7 @@ export default function PermissionsScreen() {
           <View style={{ gap: 6 }}>
             <SectionTitle>{`What ${whoLabel} can see`}</SectionTitle>
             {data!.data.length ? (
-              <Card>{renderRows(data!.data, DATA_CYCLE)}</Card>
+              <Card>{renderRows(data!.data, DATA_CYCLE, true)}</Card>
             ) : (
               <EmptyState
                 title="No data sources yet"
@@ -262,7 +290,7 @@ export default function PermissionsScreen() {
           {data!.actions.length ? (
             <View style={{ gap: 6 }}>
               <SectionTitle>{`What ${whoLabel} can do`}</SectionTitle>
-              <Card>{renderRows(data!.actions, ACTION_CYCLE)}</Card>
+              <Card>{renderRows(data!.actions, ACTION_CYCLE, false)}</Card>
             </View>
           ) : null}
           <Txt size={12} lh={1.45} color={colors.secondary}>

@@ -13,8 +13,8 @@ import {
 import { queue, worker } from '@hub/server';
 import { UserSettings } from '@hub/shared';
 import { QUEUES, SchedulerJob, type SyncJob } from '@hub/shared/queues';
-import { ensureSubscription, markReconnect, watchKind } from '../lib/accounts';
-import { connectorContext } from '../lib/context';
+import { ensureSubscription, markReconnect, sourceRow } from '../lib/accounts';
+import { connectorContext, isSubscribed, sourcesOf } from '../lib/context';
 import { defaultDeps, errInfo, type WorkerDeps } from '../lib/deps';
 import type { Closable } from '../types';
 
@@ -42,7 +42,11 @@ export const SCHEDULES: {
 export const PURGE_BATCH = 500;
 export const PURGE_MAX_BATCHES = 200;
 
-/** Renews watches expiring within 48h and subscribes live accounts that have none. */
+/**
+ * For every live/importing account of any registered provider: renews each enabled source's
+ * push subscription expiring within 48h (connector.renew with that source's context), and
+ * subscribes enabled sources that have none yet. Counts are per source.
+ */
 export async function renewSubscriptions(deps: WorkerDeps) {
   const now = deps.now();
   const rows = await deps.db
@@ -68,39 +72,52 @@ export async function renewSubscriptions(deps: WorkerDeps) {
     } catch {
       continue; // provider not implemented yet
     }
-    const sub = subs.find(
-      (s) => s.accountId === account.id && s.kind === watchKind(account.provider),
-    );
-    const due = !sub || !sub.expiresAt || sub.expiresAt.getTime() - now.getTime() < RENEW_WITHIN_MS;
-    if (!due) {
-      out.unchanged++;
-      continue;
-    }
-    try {
-      const ctx = await connectorContext(deps, account);
-      await ensureSubscription(deps, account, connector, ctx, { force: true });
-      if (sub) out.renewed++;
-      else out.subscribed++;
-      await audit(deps.db, {
-        userId: account.userId,
-        principal: PRINCIPAL,
-        action: sub ? 'subscription.renewed' : 'subscription.created',
-        target: `account:${account.id}`,
-      });
-    } catch (e) {
-      if (e instanceof ReconnectRequiredError) {
-        await markReconnect(deps, account, PRINCIPAL);
-        out.reconnect++;
-      } else {
+    for (const source of sourcesOf(connector, account)) {
+      const existing = subs.find((s) => s.accountId === account.id && s.kind === source);
+      const subscribed = isSubscribed(existing);
+      const due =
+        !existing ||
+        !existing.enabled ||
+        !subscribed ||
+        (!!existing.expiresAt && existing.expiresAt.getTime() - now.getTime() < RENEW_WITHIN_MS);
+      if (!due) {
+        out.unchanged++;
+        continue;
+      }
+      try {
+        const row = existing?.enabled ? existing : await sourceRow(deps, account, source);
+        const ctx = await connectorContext(deps, account, { row });
+        const r = await ensureSubscription(deps, connector, ctx, row, { force: true });
+        if (r.renewed) out.renewed++;
+        else out.subscribed++;
+        await audit(deps.db, {
+          userId: account.userId,
+          principal: PRINCIPAL,
+          action: r.renewed ? 'subscription.renewed' : 'subscription.created',
+          target: `account:${account.id}`,
+          details: { source },
+        });
+      } catch (e) {
+        if (e instanceof ReconnectRequiredError) {
+          await markReconnect(deps, account, PRINCIPAL);
+          out.reconnect++;
+          break; // the other sources share the token
+        }
         out.failed++;
-        deps.log.warn({ accountId: account.id, ...errInfo(e) }, 'subscription renewal failed');
+        deps.log.warn(
+          { accountId: account.id, source, ...errInfo(e) },
+          'subscription renewal failed',
+        );
       }
     }
   }
   return out;
 }
 
-/** Enqueues a catch-up sync for every live account (one per account per 15-min slot). */
+/**
+ * Enqueues a catch-up sync for every live account (one per account per 15-min slot). The
+ * job has no source, so it covers every enabled source of the account.
+ */
 export async function catchupSync(deps: WorkerDeps) {
   const rows = await deps.db
     .select({ id: accounts.id })
