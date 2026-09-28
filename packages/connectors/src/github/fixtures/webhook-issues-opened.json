@@ -1,0 +1,13 @@
+{
+  "action": "opened",
+  "issue": {
+    "number": 51,
+    "title": "New bug",
+    "body": "text",
+    "user": { "login": "priyar", "id": 1002 },
+    "updated_at": "2026-09-28T10:00:00Z"
+  },
+  "repository": { "id": 11, "full_name": "acme/web", "private": true },
+  "sender": { "login": "priyar", "id": 1002 },
+  "installation": { "id": 7001, "node_id": "MDIzOkludGVncmF0aW9uSW5zdGFsbGF0aW9uNzAwMQ==" }
+}

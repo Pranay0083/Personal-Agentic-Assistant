@@ -1,0 +1,9 @@
+{
+  "object": "user",
+  "id": "556a1abf-4f08-40c6-878a-75890d2a88ba",
+  "name": "Priya Raman",
+  "avatar_url": null,
+  "type": "person",
+  "person": { "email": "priya@company.example" },
+  "request_id": "2b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0"
+}

@@ -1,0 +1,40 @@
+{
+  "object": "list",
+  "results": [
+    {
+      "object": "block",
+      "id": "b0000000-0000-0000-0000-000000000031",
+      "type": "quote",
+      "has_children": false,
+      "in_trash": false,
+      "quote": {
+        "rich_text": [
+          {
+            "type": "mention",
+            "mention": {
+              "type": "user",
+              "user": {
+                "object": "user",
+                "id": "556a1abf-4f08-40c6-878a-75890d2a88ba"
+              }
+            },
+            "plain_text": "@Priya Raman "
+          },
+          {
+            "type": "text",
+            "text": {
+              "content": "Apple says 24h"
+            },
+            "plain_text": "Apple says 24h"
+          }
+        ],
+        "color": "default"
+      }
+    }
+  ],
+  "next_cursor": null,
+  "has_more": false,
+  "type": "block",
+  "block": {},
+  "request_id": "6b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0"
+}

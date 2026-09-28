@@ -1,0 +1,13 @@
+{
+  "action": "review_requested",
+  "number": 42,
+  "pull_request": {
+    "number": 42,
+    "title": "Add pricing page",
+    "user": { "login": "priyar", "id": 1002 }
+  },
+  "requested_reviewer": { "login": "alexkim", "id": 1001 },
+  "repository": { "id": 11, "full_name": "acme/web", "private": true },
+  "sender": { "login": "priyar", "id": 1002 },
+  "installation": { "id": 7001 }
+}

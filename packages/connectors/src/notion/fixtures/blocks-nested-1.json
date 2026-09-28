@@ -1,0 +1,27 @@
+{
+  "object": "list",
+  "results": [
+    {
+      "object": "block",
+      "id": "b0000000-0000-0000-0000-000000000021",
+      "type": "bulleted_list_item",
+      "has_children": true,
+      "in_trash": false,
+      "bulleted_list_item": {
+        "rich_text": [
+          {
+            "type": "text",
+            "text": { "content": "May take a week" },
+            "plain_text": "May take a week"
+          }
+        ],
+        "color": "default"
+      }
+    }
+  ],
+  "next_cursor": null,
+  "has_more": false,
+  "type": "block",
+  "block": {},
+  "request_id": "5b1c2d3e-4f50-6172-8394-a5b6c7d8e9f0"
+}

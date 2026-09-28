@@ -1,0 +1,26 @@
+{
+  "total_count": 3,
+  "incomplete_results": false,
+  "items": [
+    {
+      "url": "https://api.github.com/repos/other/secret/issues/1",
+      "repository_url": "https://api.github.com/repos/other/secret",
+      "html_url": "https://github.com/other/secret/issues/1",
+      "id": 3000001,
+      "node_id": "I_kwDOA01",
+      "number": 1,
+      "title": "Outside the installation",
+      "state": "open",
+      "locked": false,
+      "user": { "login": "alexkim", "id": 1001, "type": "User" },
+      "labels": [],
+      "assignees": [],
+      "comments": 0,
+      "created_at": "2026-09-27T08:00:00Z",
+      "updated_at": "2026-09-28T09:25:00Z",
+      "closed_at": null,
+      "body": "not ours",
+      "score": 1.0
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "zen": "Keep it logically awesome.",
+  "hook_id": 1,
+  "hook": { "type": "App", "id": 1, "events": ["issues"] }
+}

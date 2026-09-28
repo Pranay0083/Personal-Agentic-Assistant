@@ -1,0 +1,12 @@
+{
+  "total_count": 1,
+  "installations": [
+    {
+      "id": 7003,
+      "account": { "login": "acme", "id": 9001, "type": "Organization" },
+      "repository_selection": "all",
+      "app_slug": "hub-context",
+      "permissions": { "issues": "write", "metadata": "read" }
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+[
+  {
+    "id": 9001,
+    "user": { "login": "priyar", "id": 1002, "type": "User" },
+    "created_at": "2026-09-28T09:00:00Z",
+    "updated_at": "2026-09-28T09:00:00Z",
+    "author_association": "MEMBER",
+    "body": "Rebased on main."
+  },
+  {
+    "id": 9002,
+    "user": { "login": "sam-oss", "id": 1003, "type": "User" },
+    "created_at": "2026-09-28T09:40:00Z",
+    "updated_at": "2026-09-28T09:40:00Z",
+    "author_association": "CONTRIBUTOR",
+    "body": "LGTM from design."
+  }
+]

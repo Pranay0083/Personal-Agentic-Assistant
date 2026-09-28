@@ -1,0 +1,11 @@
+{
+  "action": "created",
+  "installation": {
+    "id": 7010,
+    "account": { "login": "alexkim", "id": 1001, "type": "User" },
+    "repository_selection": "selected",
+    "permissions": { "issues": "read", "metadata": "read", "pull_requests": "read" }
+  },
+  "repositories": [{ "id": 31, "full_name": "alexkim/notes", "private": true }],
+  "sender": { "login": "alexkim", "id": 1001 }
+}

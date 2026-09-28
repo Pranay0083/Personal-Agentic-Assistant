@@ -1,0 +1,8 @@
+{
+  "total_count": 2,
+  "repository_selection": "selected",
+  "repositories": [
+    { "id": 11, "full_name": "acme/web", "private": true },
+    { "id": 12, "full_name": "acme/api", "private": true }
+  ]
+}

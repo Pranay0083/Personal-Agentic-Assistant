@@ -1,0 +1,13 @@
+{
+  "login": "alexkim",
+  "id": 1001,
+  "node_id": "U_kgDOAAAD6Q",
+  "avatar_url": "https://avatars.githubusercontent.com/u/1001?v=4",
+  "type": "User",
+  "site_admin": false,
+  "name": "Alex Kim",
+  "company": "Acme",
+  "public_repos": 4,
+  "created_at": "2018-01-01T00:00:00Z",
+  "updated_at": "2026-09-01T00:00:00Z"
+}
