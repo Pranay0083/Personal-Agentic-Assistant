@@ -200,9 +200,15 @@ export function useDecideProposal() {
 export function useDecideAccess() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (v: { id: string; decision: 'allow' | 'deny'; durationMinutes: number }) =>
+    mutationFn: (v: {
+      id: string;
+      decision: 'allow' | 'deny';
+      durationMinutes: number;
+      /** For `mcp_connect`: the code shown on the computer's consent page. */
+      pairingCode?: string;
+    }) =>
       v.decision === 'allow'
-        ? api.allowAccess(v.id, v.durationMinutes)
+        ? api.allowAccess(v.id, v.durationMinutes, v.pairingCode)
         : api.denyAccess(v.id).then(() => ({ grant: null })),
     onMutate: async ({ id }) => {
       await qc.cancelQueries({ queryKey: qk.accessRequests });

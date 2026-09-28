@@ -25,7 +25,7 @@ export function recommendedModel(agent: string): string {
 export type RouterOptions = {
   db: Db;
   /** Decrypts user provider keys at call time. */
-  secrets: { get(ref: string): Promise<string> };
+  secrets: { get(ref: string, expected?: { userId?: string }): Promise<string> };
   /** Builds adapters for user-configured providers. Tests inject fakes. */
   providerFactory?: ProviderFactory;
   /** The hub-managed recommended provider. Default: fake if MODEL_PROVIDER=fake, else Anthropic. */
@@ -50,7 +50,13 @@ type Leg = {
 
 function defaultRecommendedProvider(): ModelProvider {
   const e = env();
-  if (e.MODEL_PROVIDER === 'fake') return new FakeProvider();
+  if (e.MODEL_PROVIDER === 'fake') {
+    // env() already refuses this in production; fail closed here too.
+    if (e.NODE_ENV === 'production') {
+      throw new ModelConfigError('MODEL_PROVIDER=fake is not allowed in production');
+    }
+    return new FakeProvider();
+  }
   if (!e.ANTHROPIC_API_KEY) {
     throw new ModelConfigError('ANTHROPIC_API_KEY is not set (or set MODEL_PROVIDER=fake)');
   }
@@ -126,7 +132,7 @@ export function createRouter(opts: RouterOptions): ModelRouter {
           .from(providers)
           .where(and(eq(providers.id, providerId), eq(providers.userId, userId)));
         if (!p) throw new ModelConfigError('configured model provider not found');
-        const apiKey = p.secretRef ? await secrets.get(p.secretRef) : undefined;
+        const apiKey = p.secretRef ? await secrets.get(p.secretRef, { userId }) : undefined;
         const provider = factory({
           kind: p.kind as ModelProviderKind,
           ...(apiKey ? { apiKey } : {}),

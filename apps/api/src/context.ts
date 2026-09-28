@@ -2,7 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import { accounts, audit, users, type AuditEntry } from '@hub/db';
 import type { LiveEvent } from '@hub/shared/queues';
 import type { ApiDeps } from './deps';
-import { notFound } from './http';
+import { errorFields, notFound } from './http';
 
 /** What route modules get: the injected deps plus a few helpers built on them. */
 export type Ctx = ApiDeps & {
@@ -24,7 +24,7 @@ export function makeCtx(deps: ApiDeps, warn: Ctx['warn']): Ctx {
       try {
         await deps.publishLive(userId, event);
       } catch (err) {
-        warn('publishLive failed', { type: event.type, err: (err as Error).message });
+        warn('publishLive failed', { type: event.type, err: errorFields(err) });
       }
     },
     audit: (entry) => audit(deps.db, entry),

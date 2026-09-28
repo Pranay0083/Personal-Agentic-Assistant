@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { accounts, auditLog, briefs, itemBodies, items, proposals, tasks } from '@hub/db';
-import { seal } from '@hub/server/secrets';
+import { seal, itemBodyContext } from '@hub/server/secrets';
 import { setup, type TestEnv } from './test-helpers';
 
 let env: TestEnv;
@@ -87,7 +87,7 @@ describe('items', () => {
   });
 
   it('returns the decrypted body to the owner and audits item.read', async () => {
-    const envelope = await seal(env.keys, 'Hello, the full body');
+    const envelope = await seal(env.keys, 'Hello, the full body', itemBodyContext(work));
     const [body] = await env.t.db
       .insert(itemBodies)
       .values({ accountId: work, ...envelope })

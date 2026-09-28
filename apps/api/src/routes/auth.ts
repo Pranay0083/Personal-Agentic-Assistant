@@ -1,12 +1,16 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { sessions } from '@hub/db';
+import { pushTokens, sessions } from '@hub/db';
 import { hashToken } from '@hub/server';
 import { DevSignInReq, GoogleSignInReq, type SignInRes } from '@hub/shared/api';
 import { bearerToken, createSession, googleVerifier, requestTimezone, upsertUser } from '../auth';
+import { z } from 'zod';
 import type { Ctx } from '../context';
 import { HttpError, notFound, parse } from '../http';
 import { toMe } from '../serialize';
+
+// POST /auth/sign-out { pushToken? }: the device's push token is unregistered with the session.
+const SignOutReq = z.object({ pushToken: z.string().min(1).max(512).optional() });
 
 export function authRoutes(app: FastifyInstance, ctx: Ctx) {
   const { db, config } = ctx;
@@ -61,13 +65,29 @@ export function authRoutes(app: FastifyInstance, ctx: Ctx) {
   });
 
   app.post('/auth/sign-out', async (req, reply) => {
+    // A malformed body never blocks signing out; it just skips the push token.
+    const pushToken = SignOutReq.safeParse(req.body ?? {}).data?.pushToken;
     const token = bearerToken(req);
     if (token) {
       const [s] = await db
         .delete(sessions)
         .where(eq(sessions.tokenHash, hashToken(token)))
         .returning({ userId: sessions.userId });
-      if (s) await ctx.audit({ userId: s.userId, principal: 'user', action: 'auth.sign_out' });
+      if (s) {
+        // Only this user's row: a token now registered to someone else is left alone.
+        const removed = pushToken
+          ? await db
+              .delete(pushTokens)
+              .where(and(eq(pushTokens.token, pushToken), eq(pushTokens.userId, s.userId)))
+              .returning({ id: pushTokens.id })
+          : [];
+        await ctx.audit({
+          userId: s.userId,
+          principal: 'user',
+          action: 'auth.sign_out',
+          details: { pushTokensRemoved: removed.length },
+        });
+      }
     }
     return reply.code(204).send();
   });

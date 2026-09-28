@@ -1,7 +1,8 @@
 import { randomBytes } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  ConnectorError,
   ReconnectRequiredError,
   RetryableError,
   type Connector,
@@ -12,7 +13,13 @@ import { accounts, auditLog, policies, proposals, users, type Db } from '@hub/db
 import { createTestDb } from '@hub/db/testing';
 import { LocalKeyProvider, SecretStore } from '@hub/server/secrets';
 import type { LiveEvent } from '@hub/shared/queues';
-import { executeProposal, type ExecutorDeps } from './execute';
+import {
+  executeProposal,
+  isAmbiguousError,
+  NEEDS_REVIEW,
+  RECONCILE_DELAYS_MS,
+  type ExecutorDeps,
+} from './execute';
 
 let t: Awaited<ReturnType<typeof createTestDb>>;
 let db: Db;
@@ -21,7 +28,11 @@ let secrets: SecretStore;
 beforeAll(async () => {
   t = await createTestDb();
   db = t.db;
-  secrets = new SecretStore(db, new LocalKeyProvider(randomBytes(32).toString('base64')));
+  // The executor's store: the only one built with write-decrypt capability.
+  secrets = new SecretStore(db, new LocalKeyProvider(randomBytes(32).toString('base64')), {
+    writeKeys: new LocalKeyProvider(randomBytes(32).toString('base64')),
+    allowWriteDecrypt: true,
+  });
 });
 afterAll(async () => t?.drop());
 
@@ -37,6 +48,10 @@ class FakeMail {
   /** Throw this instead of sending. */
   failBeforeSend: Error | null = null;
   withFind = true;
+  /** The next N lookups miss even if the message was sent (Gmail has not indexed it yet). */
+  hiddenLookups = 0;
+  /** Throw this from findExecuted. */
+  failLookup: Error | null = null;
 
   connector(): Connector {
     const c: Partial<Connector> = {
@@ -61,6 +76,11 @@ class FakeMail {
     if (this.withFind) {
       c.findExecuted = async (ctx: ConnectorContext, _action: string, key: string) => {
         this.lookups.push(ctx.tokens.accessToken);
+        if (this.failLookup) throw this.failLookup;
+        if (this.hiddenLookups > 0) {
+          this.hiddenLookups--;
+          return null;
+        }
         const i = this.sent.findIndex((s) => s.key === key);
         return i < 0 ? null : { externalId: `gm-${i + 1}`, threadId: 'thread-1' };
       };
@@ -71,6 +91,7 @@ class FakeMail {
 
 let mail: FakeMail;
 let live: LiveEvent[];
+let waits: number[];
 let deps: ExecutorDeps;
 let userId: string;
 let accountId: string;
@@ -86,6 +107,7 @@ const PAYLOAD = {
 beforeEach(async () => {
   mail = new FakeMail();
   live = [];
+  waits = [];
   const [u] = await db
     .insert(users)
     .values({ email: `u${randomBytes(4).toString('hex')}@test.dev` })
@@ -123,6 +145,9 @@ beforeEach(async () => {
       live.push(e);
     },
     now: () => new Date('2026-09-28T10:00:00Z'),
+    sleep: async (ms) => {
+      waits.push(ms);
+    },
   };
 });
 
@@ -153,6 +178,7 @@ const actions = async (id: string) =>
       .select()
       .from(auditLog)
       .where(eq(auditLog.target, `proposal:${id}`))
+      .orderBy(auditLog.id)
   ).map((r) => r.action);
 
 describe('executor: sends exactly once', () => {
@@ -173,7 +199,11 @@ describe('executor: sends exactly once', () => {
       threadId: 'thread-1',
       messageId: `<${p.idempotencyKey}@hub>`,
     });
-    expect(await actions(p.id)).toEqual(['executor.start', 'executor.executed']);
+    expect(await actions(p.id)).toEqual([
+      'executor.start',
+      'executor.sending',
+      'executor.executed',
+    ]);
     expect(live).toContainEqual({ type: 'proposal.updated', proposalId: p.id });
   });
 
@@ -193,18 +223,112 @@ describe('executor: sends exactly once', () => {
     expect(mail.sent).toHaveLength(1);
   });
 
-  it('does not re-send when retried after a timeout that happened after the send', async () => {
-    mail.failAfterSend = new RetryableError('gmail', 'socket timeout');
+  it('reconciles a timeout that happened after the send instead of re-sending', async () => {
+    mail.failAfterSend = new RetryableError('gmail', 'network error TimeoutError');
     const p = await proposal();
-    await expect(executeProposal(deps, p.id)).rejects.toBeInstanceOf(RetryableError);
-    expect((await load(p.id)).status).toBe('executing');
-
-    mail.failAfterSend = null;
     const out = await executeProposal(deps, p.id);
     expect(out).toEqual({ status: 'executed', externalId: 'gm-1', reconciled: true });
     expect(mail.sent).toHaveLength(1);
     // The lookup uses the read token (gmail.send cannot search).
     expect(mail.lookups).toEqual(['read-token']);
+    expect(waits).toEqual([]);
+  });
+
+  it('keeps looking while Gmail has not indexed the send yet (2s, 5s, 15s)', async () => {
+    mail.failAfterSend = new RetryableError('gmail', 'network error ECONNRESET');
+    mail.hiddenLookups = 3;
+    const p = await proposal();
+    const out = await executeProposal(deps, p.id);
+    expect(out).toMatchObject({ status: 'executed', reconciled: true });
+    expect(mail.sent).toHaveLength(1);
+    expect(mail.lookups).toHaveLength(4);
+    expect(waits).toEqual([...RECONCILE_DELAYS_MS]);
+  });
+
+  it('an ambiguous failure never found → failed needs_review, never re-sent', async () => {
+    mail.failAfterSend = new RetryableError('gmail', 'network error ETIMEDOUT');
+    mail.hiddenLookups = 100;
+    const p = await proposal();
+    const out = await executeProposal(deps, p.id);
+    expect(out).toEqual({ status: 'failed', reason: NEEDS_REVIEW });
+    const row = await load(p.id);
+    expect(row.status).toBe('failed');
+    expect(row.error).toBe(NEEDS_REVIEW);
+    expect(await actions(p.id)).toEqual(['executor.start', 'executor.sending', 'executor.failed']);
+    const [a] = await db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.target, `proposal:${p.id}`))
+      .orderBy(desc(auditLog.id))
+      .limit(1);
+    expect(a!.details).toMatchObject({ reason: NEEDS_REVIEW, needsReview: true });
+    // Further jobs (BullMQ retries, duplicates) never send again.
+    mail.failAfterSend = null;
+    expect((await executeProposal(deps, p.id)).status).toBe('skipped');
+    expect(mail.sent).toHaveLength(1);
+  });
+
+  it('lookup errors on the ambiguous path count as misses → needs_review, no re-send', async () => {
+    mail.failAfterSend = new RetryableError('gmail', 'network error ECONNRESET');
+    mail.failLookup = new RetryableError('gmail', 'gmail responded 503', { status: 503 });
+    const p = await proposal();
+    expect(await executeProposal(deps, p.id)).toEqual({ status: 'failed', reason: NEEDS_REVIEW });
+    expect(mail.sent).toHaveLength(1);
+    expect(mail.lookups).toHaveLength(4);
+  });
+
+  it('a retry that finds a send was attempted does not re-send on one missed lookup', async () => {
+    // A worker died mid-send: `executing` with the send marker and nothing confirmed.
+    const p = await proposal({ status: 'executing' });
+    await db.insert(auditLog).values({
+      userId,
+      principal: 'system:executor',
+      action: 'executor.sending',
+      target: `proposal:${p.id}`,
+    });
+    mail.sent.push({ key: p.idempotencyKey, payload: PAYLOAD, token: 'write-token' });
+    mail.hiddenLookups = 2;
+    const found = await executeProposal(deps, p.id);
+    expect(found).toMatchObject({ status: 'executed', reconciled: true });
+    expect(mail.sent).toHaveLength(1);
+    expect(waits).toEqual([2_000, 5_000]);
+
+    const q = await proposal({ status: 'executing' });
+    await db.insert(auditLog).values({
+      userId,
+      principal: 'system:executor',
+      action: 'executor.sending',
+      target: `proposal:${q.id}`,
+    });
+    mail.hiddenLookups = 100;
+    expect(await executeProposal(deps, q.id)).toEqual({ status: 'failed', reason: NEEDS_REVIEW });
+    expect(mail.sent).toHaveLength(1);
+  });
+
+  it('a clean retry (429 before sending) re-sends after one lookup', async () => {
+    mail.failBeforeSend = new RetryableError('gmail', 'gmail responded 429', { status: 429 });
+    const p = await proposal();
+    await expect(executeProposal(deps, p.id)).rejects.toBeInstanceOf(RetryableError);
+    expect(await actions(p.id)).toContain('executor.retry');
+    mail.failBeforeSend = null;
+    expect(await executeProposal(deps, p.id)).toMatchObject({
+      status: 'executed',
+      reconciled: false,
+    });
+    expect(mail.sent).toHaveLength(1);
+    expect(mail.lookups).toHaveLength(1);
+    expect(waits).toEqual([]);
+  });
+
+  it('classifies ambiguous errors', () => {
+    expect(isAmbiguousError(new RetryableError('gmail', 'network error ETIMEDOUT'))).toBe(true);
+    expect(isAmbiguousError(new RetryableError('gmail', 'x', { status: 502 }))).toBe(true);
+    expect(isAmbiguousError(new RetryableError('gmail', 'x', { status: 503 }))).toBe(false);
+    expect(isAmbiguousError(new RetryableError('gmail', 'x', { status: 429 }))).toBe(false);
+    expect(isAmbiguousError(new ConnectorError('gmail', 'x', { status: 400 }))).toBe(false);
+    expect(isAmbiguousError(new ReconnectRequiredError('gmail'))).toBe(false);
+    expect(isAmbiguousError(Object.assign(new Error('x'), { code: 'ECONNRESET' }))).toBe(true);
+    expect(isAmbiguousError(new Error('plain'))).toBe(false);
   });
 
   it('reconciles after a crash between send and bookkeeping', async () => {
@@ -237,9 +361,10 @@ describe('executor: sends exactly once', () => {
 
   it('checks for an earlier send when a failed proposal is re-approved', async () => {
     mail.failAfterSend = new RetryableError('gmail', 'timeout');
+    mail.hiddenLookups = 4; // not indexed during the first attempt's lookups
     const p = await proposal();
     const first = await executeProposal(deps, p.id, { finalAttempt: true });
-    expect(first.status).toBe('failed');
+    expect(first).toEqual({ status: 'failed', reason: NEEDS_REVIEW });
     expect(mail.sent).toHaveLength(1);
 
     mail.failAfterSend = null;
@@ -361,9 +486,29 @@ describe('executor: errors', () => {
       reason: 'reconnect required',
     });
     const p2 = await proposal();
-    mail.failBeforeSend = new Error('invalid recipient');
+    mail.failBeforeSend = new ConnectorError('gmail', 'invalid recipient', { status: 400 });
     expect((await executeProposal(deps, p2.id)).status).toBe('failed');
     expect((await load(p2.id)).error).toContain('invalid recipient');
+    expect(mail.sent).toHaveLength(0);
+  });
+
+  it('never stores or audits the message of a non-connector error (DB errors carry params)', async () => {
+    const dbError = Object.assign(
+      new Error('Failed query: insert into x values ($1)\nparams: meera@acme.com,SECRET-BODY'),
+      { name: 'DrizzleQueryError', cause: { code: '23505' } },
+    );
+    mail.failBeforeSend = dbError;
+    const p = await proposal();
+    expect(await executeProposal(deps, p.id)).toEqual({
+      status: 'failed',
+      reason: 'DrizzleQueryError (23505)',
+    });
+    const rows = await db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.target, `proposal:${p.id}`));
+    expect(JSON.stringify(rows)).not.toContain('SECRET-BODY');
+    expect((await load(p.id)).error).not.toContain('meera@acme.com');
   });
 
   it('missing proposal', async () => {

@@ -1,7 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import type { Connector, NormalizedItem } from '@hub/connectors';
 import { itemBodies, items } from '@hub/db';
-import { seal } from '@hub/server/secrets';
+import { itemBodyContext, seal } from '@hub/server/secrets';
 import { QUEUES } from '@hub/shared/queues';
 import { accountFilters, type AccountRow } from './context';
 import type { WorkerDeps } from './deps';
@@ -70,7 +70,10 @@ export async function ingestRecords(
       counts.updated++;
       continue;
     }
-    const envelope = item.body ? await seal(deps.keys, item.body) : null;
+    // Bound to the account: the envelope fails to open if moved to another account's row.
+    const envelope = item.body
+      ? await seal(deps.keys, item.body, itemBodyContext(account.id))
+      : null;
     const insertedId = await deps.db.transaction(async (tx) => {
       let bodyRef: string | null = null;
       if (envelope) {

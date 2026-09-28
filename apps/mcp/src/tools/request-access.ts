@@ -146,8 +146,8 @@ export async function requestAccess(env: ToolEnv, args: RequestArgs): Promise<Ca
   const job: NotifierJob = {
     userId: env.principal.userId,
     kind: 'access_request',
-    title: `${env.clientName} is asking for access`,
-    body: `Read ${args.resource} on ${label} for ${args.durationMinutes} min. Review it in Approvals.`,
+    title: 'Access request',
+    body: 'An agent is asking for access. Review it in Hub.',
     data: { requestId: id },
     dedupeKey: `access_request:${id}`,
   };

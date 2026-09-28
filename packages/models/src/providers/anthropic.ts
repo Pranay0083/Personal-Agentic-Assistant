@@ -1,6 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { ModelProviderError, ModelRefusalError, isRetryableStatus } from '../errors';
 import type { GenerateRequest, GenerateResult, ModelProvider } from '../types';
+import { assertPublicBaseUrl, validateBaseUrl, type LookupFn } from './base-url';
+import { productionDefault } from './env';
 
 type RequestOpts = { timeout?: number; maxRetries?: number };
 
@@ -32,8 +34,22 @@ export function acceptsEffort(model: string): boolean {
 export class AnthropicProvider implements ModelProvider {
   readonly kind = 'anthropic' as const;
   private readonly client: AnthropicClientLike;
+  private readonly baseURL: string | undefined;
+  private readonly production: boolean;
+  private readonly lookup: LookupFn | undefined;
 
-  constructor(opts: { apiKey?: string; baseURL?: string; client?: AnthropicClientLike }) {
+  constructor(opts: {
+    apiKey?: string;
+    /** User-configured endpoint; validated here and before every call (see base-url.ts). */
+    baseURL?: string;
+    client?: AnthropicClientLike;
+    production?: boolean;
+    lookup?: LookupFn;
+  }) {
+    this.production = opts.production ?? productionDefault();
+    this.lookup = opts.lookup;
+    this.baseURL = opts.baseURL || undefined;
+    if (this.baseURL) validateBaseUrl(this.baseURL, { production: this.production });
     this.client =
       opts.client ??
       new Anthropic({
@@ -68,6 +84,12 @@ export class AnthropicProvider implements ModelProvider {
   }
 
   async generate(req: GenerateRequest): Promise<GenerateResult> {
+    if (this.baseURL) {
+      await assertPublicBaseUrl(this.baseURL, {
+        production: this.production,
+        ...(this.lookup ? { lookup: this.lookup } : {}),
+      });
+    }
     let res: Anthropic.Message;
     try {
       res = await this.client.messages.create(this.toParams(req), {

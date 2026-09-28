@@ -30,6 +30,21 @@ export function idParam(params: unknown): string {
   return r.data.id;
 }
 
+/**
+ * What may be logged about an error: its class name and the driver's error code.
+ * Never `message` or `stack`: a DrizzleQueryError message carries the query params
+ * (email bodies, recipients), and provider errors can echo request details.
+ */
+export function errorFields(err: unknown): { name: string; code?: string } {
+  if (!err || typeof err !== 'object') return { name: typeof err };
+  const name = typeof (err as Error).name === 'string' ? (err as Error).name : 'Error';
+  const cause = (err as { cause?: unknown }).cause;
+  const code = cause && typeof cause === 'object' ? (cause as { code?: unknown }).code : undefined;
+  return typeof code === 'string' || typeof code === 'number'
+    ? { name, code: String(code) }
+    : { name };
+}
+
 function zodMessage(err: ZodError): string {
   return err.issues
     .slice(0, 5)
@@ -53,8 +68,12 @@ export function registerErrorHandling(app: FastifyInstance) {
     if (status && status >= 400 && status < 500) {
       return reply.code(status).send({ error: 'invalid_request', message: err.message });
     }
-    // Only the error itself: never the request body, which can hold message text or secrets.
-    req.log.error({ err: { name: err.name, message: err.message, stack: err.stack } }, 'error');
+    // Name, driver code and route only: never the message, stack or request body, which can
+    // hold query params, message text or secrets.
+    req.log.error(
+      { err: errorFields(err), method: req.method, route: req.routeOptions.url ?? 'unmatched' },
+      'error',
+    );
     return reply.code(500).send({ error: 'internal', message: 'internal error' });
   });
 }

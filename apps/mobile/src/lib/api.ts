@@ -8,6 +8,7 @@ import {
   AccountsRes,
   ActivityRes,
   AskRes,
+  CompleteConnectRes,
   ControlRes,
   ErrorRes,
   ItemsRes,
@@ -69,6 +70,7 @@ export type ActivityT = Infer<typeof ActivityRes>;
 export type ActivityEntryT = ActivityT['entries'][number];
 export type AskT = Infer<typeof AskRes>;
 export type SignInT = Infer<typeof SignInRes>;
+export type CompleteConnectT = CompleteConnectRes;
 
 export type UpdateMe = Infer<typeof UpdateMeReq>;
 export type UpdateAccount = Infer<typeof UpdateAccountReq>;
@@ -229,7 +231,9 @@ export const api = {
   devSignIn: (email: string, name?: string) =>
     call('POST', '/auth/dev', SignInRes, { email, name }),
   googleSignIn: (idToken: string) => call('POST', '/auth/google', SignInRes, { idToken }),
-  signOut: () => callVoid('POST', '/auth/sign-out'),
+  /** Pass this device's push token so the hub stops sending it this user's notifications. */
+  signOut: (pushToken?: string | null) =>
+    callVoid('POST', '/auth/sign-out', pushToken ? { pushToken } : undefined),
 
   // Me
   me: () => call('GET', '/me', Me),
@@ -241,6 +245,9 @@ export const api = {
   accounts: () => call('GET', '/accounts', AccountsRes),
   connect: (provider: Provider, redirectUri?: string) =>
     call('POST', `/accounts/${provider}/connect`, UrlRes, { redirectUri }),
+  /** Finishes a connect with this session; the hub checks it's the user who started it. */
+  completeConnect: (pending: string) =>
+    call<CompleteConnectT>('POST', '/accounts/complete', CompleteConnectRes, { pending }),
   updateAccount: (id: string, patch: UpdateAccount) =>
     callMaybe('PATCH', `/accounts/${id}`, Account, patch),
   applySettingsToProvider: (id: string) =>
@@ -271,8 +278,14 @@ export const api = {
     callMaybe('POST', `/proposals/${id}/approve`, Proposal, payload ? { payload } : {}),
   rejectProposal: (id: string) => callMaybe('POST', `/proposals/${id}/reject`, Proposal, {}),
   accessRequests: () => call('GET', '/access-requests?status=pending', AccessRequestsRes),
-  allowAccess: (id: string, durationMinutes: number) =>
-    call('POST', `/access-requests/${id}/allow`, AllowRes, { durationMinutes }),
+  /** `pairingCode` is required for `mcp_connect`: the code shown on the computer. */
+  allowAccess: (id: string, durationMinutes: number, pairingCode?: string) =>
+    call(
+      'POST',
+      `/access-requests/${id}/allow`,
+      AllowRes,
+      pairingCode ? { durationMinutes, pairingCode } : { durationMinutes },
+    ),
   denyAccess: (id: string) => callVoid('POST', `/access-requests/${id}/deny`),
 
   // Permissions

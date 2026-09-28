@@ -1,6 +1,7 @@
 import { and, asc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { agentConfigs, providers } from '@hub/db';
+import { assertPublicBaseUrl, DEV_ONLY_PROVIDER_KINDS, ModelConfigError } from '@hub/models';
 import {
   AgentName,
   RECOMMENDED_MODELS,
@@ -116,6 +117,21 @@ export function modelRoutes(app: FastifyInstance, ctx: Ctx) {
     const body = parse(AddProviderReq, req.body);
     const badKey = Object.keys(body.config).find((k) => SECRET_KEY.test(k));
     if (badKey) throw badRequest(`config.${badKey}: put secrets in "secret", not config`);
+    if (ctx.config.production && DEV_ONLY_PROVIDER_KINDS.includes(body.kind)) {
+      throw badRequest(`kind: ${body.kind} is not available`);
+    }
+    // The hub calls this URL with the user's key: https only, and in production only public
+    // hosts (the adapter re-checks before every call, since DNS can change).
+    const baseUrl = body.config.baseUrl?.trim();
+    if (baseUrl !== undefined) {
+      try {
+        await assertPublicBaseUrl(baseUrl, { production: ctx.config.production });
+      } catch (err) {
+        if (err instanceof ModelConfigError) throw badRequest(`config.baseUrl: ${err.message}`);
+        throw err;
+      }
+      body.config.baseUrl = baseUrl;
+    }
 
     // Encrypted at rest; only secret_ref is stored and the value is never echoed or logged.
     const secretRef = body.secret

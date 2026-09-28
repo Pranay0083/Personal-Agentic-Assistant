@@ -79,6 +79,9 @@ and optionally `execute` (write actions, used only by the executor).
 - `pnpm dev` — run api, gateway, workers, mcp
 - `pnpm --filter mobile start` — Expo
 - `pnpm test` / `pnpm lint` / `pnpm typecheck`
+- `pnpm acceptance` — end-to-end Phase 1–4 checks against a running `pnpm dev` in demo mode
+- `pnpm --filter @hub/gateway fake:email --to <addr> --from "Name <addr>" --subject … --body …`
+  — deliver a test email in demo mode (`GMAIL_FAKE=1`)
 
 Keep these commands working. Update this section if you change them.
 

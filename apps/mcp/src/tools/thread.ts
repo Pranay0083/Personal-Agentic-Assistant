@@ -3,7 +3,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { accounts, itemBodies, items } from '@hub/db';
 import { fenceUntrusted } from '@hub/models';
-import { open } from '@hub/server/secrets';
+import { itemBodyContext, open } from '@hub/server/secrets';
 import {
   auditTool,
   errorResult,
@@ -89,7 +89,9 @@ export async function getThread(env: ToolEnv, args: { itemId: string }): Promise
       const now = env.ctx.now();
       for (const b of sealed) {
         if (b.expiresAt && b.expiresAt <= now) continue;
-        const plain = (await open(env.ctx.secrets, b)).toString('utf8');
+        const plain = (await open(env.ctx.secrets, b, itemBodyContext(b.accountId))).toString(
+          'utf8',
+        );
         bodies.set(
           b.id,
           plain.length > MAX_BODY_CHARS ? `${plain.slice(0, MAX_BODY_CHARS)}…` : plain,

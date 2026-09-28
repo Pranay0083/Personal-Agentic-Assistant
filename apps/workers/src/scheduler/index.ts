@@ -1,6 +1,15 @@
-import { and, eq, inArray, lt } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, lte, lt } from 'drizzle-orm';
 import { ReconnectRequiredError } from '@hub/connectors';
-import { accessRequests, accounts, audit, briefs, subscriptions, users } from '@hub/db';
+import {
+  accessRequests,
+  accounts,
+  audit,
+  briefs,
+  itemBodies,
+  items,
+  subscriptions,
+  users,
+} from '@hub/db';
 import { queue, worker } from '@hub/server';
 import { UserSettings } from '@hub/shared';
 import { QUEUES, SchedulerJob, type SyncJob } from '@hub/shared/queues';
@@ -26,7 +35,12 @@ export const SCHEDULES: {
   { id: 'catchup-sync', repeat: { every: CATCHUP_EVERY_MS } },
   { id: 'daily-briefs', repeat: { pattern: '*/15 * * * *' } },
   { id: 'expire-grants', repeat: { pattern: '5 * * * *' } },
+  { id: 'purge-expired-bodies', repeat: { pattern: '43 3 * * *' } },
 ];
+
+/** Rows deleted per batch, and batches per run (the next daily run picks up the rest). */
+export const PURGE_BATCH = 500;
+export const PURGE_MAX_BATCHES = 200;
 
 /** Renews watches expiring within 48h and subscribes live accounts that have none. */
 export async function renewSubscriptions(deps: WorkerDeps) {
@@ -187,6 +201,52 @@ export async function expireGrants(deps: WorkerDeps) {
   return { expired: expired.length };
 }
 
+/**
+ * Deletes message bodies past `item_bodies.expires_at` (retention, BODY_RETENTION_DAYS) in
+ * batches and clears `items.body_ref`. One audit row per user, with counts only.
+ */
+export async function purgeExpiredBodies(
+  deps: Pick<WorkerDeps, 'db' | 'now'>,
+  opts: { batchSize?: number; maxBatches?: number } = {},
+) {
+  const batchSize = opts.batchSize ?? PURGE_BATCH;
+  const maxBatches = opts.maxBatches ?? PURGE_MAX_BATCHES;
+  const now = deps.now();
+  const perUser = new Map<string, number>();
+  let deleted = 0;
+  let batches = 0;
+  for (; batches < maxBatches; batches++) {
+    const batch = await deps.db
+      .select({ id: itemBodies.id, userId: accounts.userId })
+      .from(itemBodies)
+      .innerJoin(accounts, eq(itemBodies.accountId, accounts.id))
+      .where(and(isNotNull(itemBodies.expiresAt), lte(itemBodies.expiresAt, now)))
+      .limit(batchSize);
+    if (batch.length === 0) break;
+    const ids = batch.map((b) => b.id);
+    await deps.db.transaction(async (tx) => {
+      await tx.update(items).set({ bodyRef: null }).where(inArray(items.bodyRef, ids));
+      await tx.delete(itemBodies).where(inArray(itemBodies.id, ids));
+    });
+    for (const b of batch) perUser.set(b.userId, (perUser.get(b.userId) ?? 0) + 1);
+    deleted += batch.length;
+    if (batch.length < batchSize) {
+      batches++;
+      break;
+    }
+  }
+  for (const [userId, count] of perUser) {
+    await audit(deps.db, {
+      userId,
+      principal: PRINCIPAL,
+      action: 'retention.bodies_purged',
+      target: null,
+      details: { deleted: count },
+    });
+  }
+  return { deleted, users: perUser.size, batches };
+}
+
 export async function runSchedulerTask(deps: WorkerDeps, job: SchedulerJob) {
   switch (job.task) {
     case 'renew-subscriptions':
@@ -197,6 +257,8 @@ export async function runSchedulerTask(deps: WorkerDeps, job: SchedulerJob) {
       return dailyBriefs(deps);
     case 'expire-grants':
       return expireGrants(deps);
+    case 'purge-expired-bodies':
+      return purgeExpiredBodies(deps);
   }
 }
 

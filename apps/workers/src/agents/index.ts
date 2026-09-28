@@ -1,8 +1,8 @@
 import { UnrecoverableError } from 'bullmq';
 import { audit, getDb } from '@hub/db';
 import { BudgetExceededError, createRouter } from '@hub/models';
-import { createLogger, enqueue, publishLive, worker } from '@hub/server';
-import { keyProvider, SecretStore } from '@hub/server/secrets';
+import { createLogger, enqueue, errorInfo, publishLive, worker } from '@hub/server';
+import { createSecretStore, keyProvider } from '@hub/server/secrets';
 import { AgentJob, QUEUES } from '@hub/shared/queues';
 import type { Closable } from '../types';
 import { runBrief } from './brief';
@@ -35,7 +35,7 @@ export function start(): Closable[] {
   const keys = keyProvider();
   const deps: AgentDeps = {
     db,
-    router: createRouter({ db, secrets: new SecretStore(db, keys) }),
+    router: createRouter({ db, secrets: createSecretStore(db) }),
     enqueue: (queue, data, opts) => enqueue(queue, data, opts),
     publishLive,
     now: () => new Date(),
@@ -63,14 +63,8 @@ export function start(): Closable[] {
         });
         throw new UnrecoverableError('monthly model budget reached');
       }
-      log.warn(
-        {
-          agent: parsed.data.agent,
-          jobId: job.id,
-          error: err instanceof Error ? err.name : 'error',
-        },
-        'agent job failed',
-      );
+      // Name and driver code only; worker() hands BullMQ a sanitized error (no SQL params).
+      log.warn({ agent: parsed.data.agent, jobId: job.id, ...errorInfo(err) }, 'agent job failed');
       throw err;
     }
   });

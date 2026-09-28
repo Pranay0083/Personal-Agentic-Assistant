@@ -40,6 +40,21 @@ export const ExecutorJob = z.object({ proposalId: z.uuid() });
 export type ExecutorJob = z.infer<typeof ExecutorJob>;
 
 /**
+ * Also on QUEUES.executor: revoke a write-scope token at the provider and delete it.
+ * Only the executor can decrypt write tokens, so revocation (e.g. after DELETE /accounts/:id)
+ * is handed to it. Enqueue with jobId `revoke-write-<secretRef>`.
+ */
+export const RevokeWriteTokenJob = z.object({
+  task: z.literal('revoke-write-token'),
+  userId: z.uuid(),
+  /** The deleted (or still existing) account the token belonged to; for audit only. */
+  accountId: z.uuid(),
+  provider: z.string().min(1).max(40),
+  secretRef: z.uuid(),
+});
+export type RevokeWriteTokenJob = z.infer<typeof RevokeWriteTokenJob>;
+
+/**
  * Push text leaves our systems (Expo, APNs/FCM, lock screens), so `title` and `body` must be
  * generic ("New task", "Draft ready") and never contain subjects, names, summaries or any
  * other message-derived text. The app fetches details by id over the authenticated API.
@@ -61,6 +76,8 @@ export const SchedulerJob = z.discriminatedUnion('task', [
   z.object({ task: z.literal('catchup-sync') }),
   z.object({ task: z.literal('daily-briefs') }),
   z.object({ task: z.literal('expire-grants') }),
+  /** Deletes item_bodies past expires_at and clears items.body_ref (daily). */
+  z.object({ task: z.literal('purge-expired-bodies') }),
 ]);
 export type SchedulerJob = z.infer<typeof SchedulerJob>;
 

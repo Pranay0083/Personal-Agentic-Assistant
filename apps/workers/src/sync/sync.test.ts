@@ -2,10 +2,12 @@ import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { RetryableError, type Connector, type OAuthTokens } from '@hub/connectors';
 import { accounts, auditLog, events, itemBodies, items, subscriptions } from '@hub/db';
-import { open } from '@hub/server/secrets';
+import { itemBodyContext, open } from '@hub/server/secrets';
 import { QUEUES } from '@hub/shared/queues';
 import { createHarness, PERSONAL, WORK, type Harness } from '../lib/testing';
 import { lockKey, runSync } from './index';
+
+const PERSONAL_ID = '00000000-0000-4000-8000-000000000999';
 
 let h: Harness;
 
@@ -178,7 +180,9 @@ describe('sync worker', () => {
     const days = (b!.expiresAt!.getTime() - Date.now()) / 86400_000;
     expect(days).toBeGreaterThan(89);
     expect(days).toBeLessThanOrEqual(90);
-    expect((await open(h.keys, b!)).toString('utf8')).toBe(body);
+    expect((await open(h.keys, b!, itemBodyContext(a.id))).toString('utf8')).toBe(body);
+    // Bound to the account: the same envelope does not open as another account's body.
+    await expect(open(h.keys, b!, itemBodyContext(PERSONAL_ID))).rejects.toThrow();
 
     const dump = await h.db.execute(
       sql`select (select coalesce(json_agg(i), '[]') from items i)::text || (select coalesce(json_agg(b), '[]') from item_bodies b)::text || (select coalesce(json_agg(e), '[]') from events e)::text || (select coalesce(json_agg(l), '[]') from audit_log l)::text as all`,

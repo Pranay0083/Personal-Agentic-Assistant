@@ -11,7 +11,7 @@ import {
   sourceLabel,
 } from '@/lib/format';
 import { ApiError, errorMessage, type AccessRequestT, type ProposalT } from '@/lib/api';
-import { colors } from '@/theme';
+import { colors, fonts } from '@/theme';
 import { Label, Title, Txt } from '@/components/Txt';
 import { Button, Card, Field, SourceTag } from '@/components/ui';
 import { EmptyState, ErrorState, LoadingState, Notice, Screen, Sheet } from '@/components/layout';
@@ -51,6 +51,40 @@ function approvedMessage(p: ProposalT, payload: Record<string, unknown>): string
   }
 }
 
+/** Digits in a pairing code; matches apps/mcp's consent page. */
+const PAIRING_DIGITS = 6;
+
+/**
+ * What to tell the user when allowing an `mcp_connect` fails. `final` errors end the
+ * request (show them as the card's outcome); the others keep the code input open.
+ */
+function connectError(e: unknown): { message: string; final: boolean } | null {
+  if (!(e instanceof ApiError)) return null;
+  switch (e.code) {
+    case 'wrong_pairing_code': {
+      const left = /(\d+) attempts? left/.exec(e.message)?.[1];
+      return {
+        message: `That code doesn't match the one on your computer.${left ? ` ${left} ${left === '1' ? 'try' : 'tries'} left.` : ''}`,
+        final: false,
+      };
+    }
+    case 'pairing_code_required':
+      return { message: 'Enter the code shown on your computer first.', final: false };
+    case 'pairing_locked':
+      return {
+        message: 'Denied after too many wrong codes. If it was you, start again on your computer.',
+        final: true,
+      };
+    case 'expired':
+      return {
+        message: 'This request expired. Start the connection again on your computer.',
+        final: true,
+      };
+    default:
+      return null;
+  }
+}
+
 function rejectedMessage(p: ProposalT): string {
   if (SENDS.has(p.action)) return 'Rejected. Draft discarded.';
   if (p.action.startsWith('jira.')) return 'Rejected. Jira unchanged.';
@@ -68,6 +102,13 @@ export default function ApprovalsScreen() {
   const [decided, setDecided] = useState<Record<string, Decided>>({});
   const [editing, setEditing] = useState<ProposalT | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Inline errors on connect cards (wrong pairing code), by request id. */
+  const [cardErrors, setCardErrors] = useState<Record<string, string>>({});
+  const setCardError = (id: string, message: string | null) =>
+    setCardErrors((s) => {
+      const { [id]: _drop, ...rest } = s;
+      return message ? { ...rest, [id]: message } : rest;
+    });
 
   const mark = (item: ProposalT | AccessRequestT, d: Decided) => {
     setSnap((s) => ({ ...s, [item.id]: item }));
@@ -107,15 +148,16 @@ export default function ApprovalsScreen() {
     );
   };
 
-  const decideAccess = (r: AccessRequestT, decision: 'allow' | 'deny') => {
+  const decideAccess = (r: AccessRequestT, decision: 'allow' | 'deny', pairingCode?: string) => {
     setError(null);
+    setCardError(r.id, null);
     const who = r.clientName ?? agentName(r.principal.replace(/^mcp:/, ''));
     mark(r, {
       message: decision === 'allow' ? 'Allowing…' : `Denied. ${who} was told no.`,
       tone: 'amber',
     });
     decideA.mutate(
-      { id: r.id, decision, durationMinutes: r.durationMinutes ?? 60 },
+      { id: r.id, decision, durationMinutes: r.durationMinutes ?? 60, pairingCode },
       {
         onSuccess: (res) => {
           if (decision !== 'allow') return;
@@ -127,6 +169,17 @@ export default function ApprovalsScreen() {
           setDecided((s) => ({ ...s, [r.id]: { message, tone: 'amber' } }));
         },
         onError: (e) => {
+          const ce = r.kind === 'mcp_connect' && decision === 'allow' ? connectError(e) : null;
+          if (ce?.final) {
+            setDecided((s) => ({ ...s, [r.id]: { message: ce.message, tone: 'amber' } }));
+            return;
+          }
+          if (ce) {
+            // Wrong or missing code: keep the card open so they can check and retype it.
+            unmark(r.id);
+            setCardError(r.id, ce.message);
+            return;
+          }
           if (e instanceof ApiError && e.status === 409) {
             setDecided((s) => ({ ...s, [r.id]: { message: errorMessage(e), tone: 'amber' } }));
             return;
@@ -207,7 +260,8 @@ export default function ApprovalsScreen() {
                 key={c.id}
                 r={c}
                 decided={decided[c.id]}
-                onAllow={() => decideAccess(c, 'allow')}
+                error={cardErrors[c.id]}
+                onAllow={(code) => decideAccess(c, 'allow', code)}
                 onDeny={() => decideAccess(c, 'deny')}
               />
             ),
@@ -370,14 +424,19 @@ function ProposalCard({
 function AccessCard({
   r,
   decided,
+  error,
   onAllow,
   onDeny,
 }: {
   r: AccessRequestT;
   decided?: Decided;
-  onAllow: () => void;
+  /** Inline error, e.g. a wrong pairing code. */
+  error?: string;
+  /** For `mcp_connect`, called with the pairing code the user typed (digits only). */
+  onAllow: (pairingCode?: string) => void;
   onDeny: () => void;
 }) {
+  const [code, setCode] = useState('');
   const who = r.clientName ?? agentName(r.principal.replace(/^mcp:/, ''));
   const minutes = r.durationMinutes ?? 60;
   const target = r.provider
@@ -385,6 +444,8 @@ function AccessCard({
     : r.resource.charAt(0).toUpperCase() + r.resource.slice(1);
   const verb = r.level === 'read' ? 'Read' : r.level === 'draft' ? 'Draft in' : 'Act on';
   const connect = r.kind === 'mcp_connect';
+  const digits = code.replace(/\D/g, '');
+  const codeReady = digits.length === PAIRING_DIGITS;
   return (
     <Card tone="warn" radius={16} style={{ padding: 16, gap: 10 }}>
       <View
@@ -398,7 +459,12 @@ function AccessCard({
         <Label size={10} em={0.06} color={colors.amberDark}>
           {connect ? 'NEW CONNECTION' : 'PERMISSION REQUEST'}
         </Label>
-        <SourceTag label={who.toUpperCase()} tone="warn" />
+        <View style={{ flexDirection: 'row', gap: 6, flexShrink: 1 }}>
+          {connect && !r.clientNameVerified ? (
+            <SourceTag label="UNVERIFIED NAME" tone="warn" />
+          ) : null}
+          <SourceTag label={who.toUpperCase()} tone="warn" />
+        </View>
       </View>
       <Txt size={16} weight={600} accessibilityRole="header">
         {connect
@@ -425,8 +491,43 @@ function AccessCard({
             </Txt>
           </View>
           <Txt size={13} lh={1.45} color={colors.body}>
-            {`"${who}" is the name the app gave itself. Only allow it if you started this connection and recognise the host. It gets what you allow in Permissions, and you can disconnect it anytime.`}
+            {r.clientNameVerified
+              ? 'Only allow it if you started this connection and recognise the host. It gets what you allow in Permissions, and you can disconnect it anytime.'
+              : `"${who}" is the name the app gave itself, not a verified name. Only allow it if you started this connection and recognise the host. It gets what you allow in Permissions, and you can disconnect it anytime.`}
           </Txt>
+          {decided ? null : (
+            <View style={{ gap: 6, marginTop: 4 }}>
+              <Field
+                label="Enter the code shown on your computer"
+                value={code}
+                onChangeText={(v) => setCode(v.replace(/[^\d ]/g, '').slice(0, PAIRING_DIGITS + 1))}
+                placeholder="123 456"
+                keyboardType="number-pad"
+                inputMode="numeric"
+                autoComplete="off"
+                maxLength={PAIRING_DIGITS + 1}
+                returnKeyType="done"
+                onSubmitEditing={() => {
+                  if (codeReady) onAllow(digits);
+                }}
+                style={{ fontFamily: fonts.mono, fontSize: 20, letterSpacing: 4 }}
+              />
+              {error ? (
+                <Txt
+                  size={13}
+                  weight={600}
+                  color={colors.amberDark}
+                  accessibilityLiveRegion="polite"
+                >
+                  {error}
+                </Txt>
+              ) : (
+                <Txt size={12} color={colors.secondary}>
+                  {"No code on your screen? You didn't start this. Deny it."}
+                </Txt>
+              )}
+            </View>
+          )}
         </View>
       ) : (
         <Txt size={13} lh={1.45} color={colors.body}>
@@ -440,7 +541,8 @@ function AccessCard({
           <Button
             label={connect ? 'Allow' : `Allow for ${minutesLabel(minutes)}`}
             grow
-            onPress={onAllow}
+            disabled={connect && !codeReady}
+            onPress={() => (connect ? onAllow(digits) : onAllow())}
           />
           <Button
             label="Deny"

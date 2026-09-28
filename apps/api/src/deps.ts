@@ -35,6 +35,17 @@ export type Enqueue = (
   opts?: { jobId?: string },
 ) => Promise<unknown>;
 
+/**
+ * Short-lived single-use values for the OAuth connect flow (Redis in production).
+ * Both operations must be atomic: they are what makes a state or pending id single-use.
+ */
+export type OAuthStore = {
+  /** SET key value NX EX ttl. True if the key was set, false if it already existed. */
+  setNx(key: string, value: string, ttlSeconds: number): Promise<boolean>;
+  /** GETDEL: returns the value and deletes the key in one step, or null if absent or expired. */
+  take(key: string): Promise<string | null>;
+};
+
 export type ApiDeps = {
   db: Db;
   secrets: SecretStore;
@@ -45,6 +56,8 @@ export type ApiDeps = {
   subscribeLive: (userId: string, onEvent: (e: LiveEvent) => void) => () => void;
   /** Returns the connector for a provider, or throws / returns undefined if unsupported. */
   getConnector: (provider: Provider) => Connector | undefined;
+  /** Single-use OAuth state nonces and pending connect results. */
+  oauthStore: OAuthStore;
   router: ModelRouter;
   now: () => Date;
   config: ApiConfig;

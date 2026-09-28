@@ -1,8 +1,13 @@
 import type { JobsOptions } from 'bullmq';
 import { getConnector, type Connector } from '@hub/connectors';
 import { getDb, type Db } from '@hub/db';
-import { createLogger, enqueue, publishLive, redis, type Logger } from '@hub/server';
-import { SecretStore, keyProvider, type KeyProvider } from '@hub/server/secrets';
+import { createLogger, enqueue, errorInfo, publishLive, redis, type Logger } from '@hub/server';
+import {
+  createSecretStore,
+  keyProvider,
+  type KeyProvider,
+  type SecretStore,
+} from '@hub/server/secrets';
 import type { LiveEvent, QueueName } from '@hub/shared/queues';
 import { RedisAccountLock, type AccountLock } from './lock';
 
@@ -31,7 +36,8 @@ export function defaultDeps(name: string): WorkerDeps {
   return {
     db,
     keys,
-    secrets: new SecretStore(db, keys),
+    // Read tokens only: this store cannot decrypt write-scope secrets (executor-only).
+    secrets: createSecretStore(db),
     getConnector,
     enqueue: (q, data, opts) => enqueue(q, data, opts),
     publishLive,
@@ -41,11 +47,8 @@ export function defaultDeps(name: string): WorkerDeps {
   };
 }
 
-/** Safe error summary for logs: class name and HTTP status, never the message body. */
-export function errInfo(e: unknown) {
-  if (e && typeof e === 'object') {
-    const x = e as { name?: unknown; status?: unknown };
-    return { err: typeof x.name === 'string' ? x.name : 'Error', status: x.status };
-  }
-  return { err: typeof e };
-}
+/**
+ * Safe error summary for logs: class name, driver code (`err.cause.code`) and HTTP status.
+ * Never the message: DB errors carry the SQL and its params there.
+ */
+export const errInfo = errorInfo;

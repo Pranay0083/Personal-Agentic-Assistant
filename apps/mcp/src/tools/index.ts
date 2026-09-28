@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { errorFields } from '../log';
 import { errorResult, type ToolEnv } from './common';
 import { proposeAction, ProposeInput } from './propose';
 import { requestAccess, RequestAccessInput } from './request-access';
@@ -28,8 +29,8 @@ export function createHubServer(env: ToolEnv): McpServer {
       try {
         return await fn(env, args);
       } catch (e) {
-        // Error messages only; never arguments or content.
-        env.ctx.logger?.error({ tool, err: (e as Error).message }, 'tool failed');
+        // Tool name, error class and driver code only: messages can carry query params.
+        env.ctx.logger?.error({ tool, ...errorFields(e) }, 'tool failed');
         return errorResult('Hub hit an internal error. Try again later.');
       }
     };

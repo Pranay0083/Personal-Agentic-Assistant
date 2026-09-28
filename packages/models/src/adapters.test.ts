@@ -247,7 +247,7 @@ describe('OpenAICompatibleProvider', () => {
         new OpenAICompatibleProvider({
           kind: 'openai_compatible',
           apiKey: 'k',
-          baseURL: 'http://gw/v1',
+          baseURL: 'https://gw/v1',
         }),
     ).not.toThrow();
   });
@@ -271,5 +271,14 @@ describe('Phase 5 placeholders', () => {
     expect(defaultProviderFactory({ kind: 'groq', apiKey: 'k', config: {} }).kind).toBe('groq');
     expect(defaultProviderFactory({ kind: 'bedrock', config: {} }).kind).toBe('bedrock');
     expect(defaultProviderFactory({ kind: 'fake', config: {} }).kind).toBe('fake');
+  });
+
+  it('refuses dev-only provider kinds in production', () => {
+    expect(() => defaultProviderFactory({ kind: 'fake', config: {}, production: true })).toThrow(
+      /not allowed in production/,
+    );
+    expect(
+      defaultProviderFactory({ kind: 'groq', apiKey: 'k', config: {}, production: true }).kind,
+    ).toBe('groq');
   });
 });

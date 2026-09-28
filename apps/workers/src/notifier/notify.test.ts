@@ -175,6 +175,47 @@ describe('processNotification', () => {
     expect((await processNotification(d, j)).status).toBe('sent');
   });
 
+  it('dedupes per device: a retry after a partial failure reaches only the rest', async () => {
+    const j = job();
+    let calls = 0;
+    const d = deps();
+    const flaky: NotifierDeps = {
+      ...d,
+      chunkSize: 1,
+      push: {
+        send: async (m) => {
+          calls++;
+          if (calls === 2) throw new Error('expo down mid-batch');
+          sent.push(m);
+          return tickets(m);
+        },
+      },
+    };
+    await expect(processNotification(flaky, j)).rejects.toThrow('expo down');
+    expect(sent.flat()).toHaveLength(1);
+    const first = sent.flat()[0]!.to;
+
+    // The BullMQ retry: only the device that did not get it is notified.
+    const out = await processNotification({ ...d, chunkSize: 1 }, j);
+    expect(out).toMatchObject({ status: 'sent', tokens: 1 });
+    const all = sent.flat().map((m) => m.to);
+    expect(all).toHaveLength(2);
+    expect(new Set(all).size).toBe(2);
+    expect(all[0]).toBe(first);
+    expect(await processNotification(d, j)).toEqual({ status: 'duplicate' });
+    expect(sent.flat()).toHaveLength(2);
+  });
+
+  it('a device registered after the first send still gets it once', async () => {
+    const j = job();
+    await processNotification(deps(), j);
+    const tok = `ExponentPushToken[${randomBytes(6).toString('hex')}]`;
+    await db.insert(pushTokens).values({ userId, token: tok, platform: 'ios' });
+    const again = await processNotification(deps(), j);
+    expect(again).toMatchObject({ status: 'sent', tokens: 1 });
+    expect(sent.at(-1)!.map((m) => m.to)).toEqual([tok]);
+  });
+
   it('honours notificationsEnabled', async () => {
     await db
       .update(users)

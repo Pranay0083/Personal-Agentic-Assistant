@@ -1,7 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
-import { InvalidTargetError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
+import { InvalidTargetError, OAuthError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
 import type {
   AuthorizationParams,
   OAuthServerProvider,
@@ -11,9 +12,11 @@ import { accessRequests, audit, mcpOauthClients, users } from '@hub/db';
 import { hashToken, randomToken } from '@hub/server';
 import { QUEUES, type NotifierJob } from '@hub/shared/queues';
 import type { Ctx } from '../deps';
+import { errorFields } from '../log';
 import { RateLimiter } from '../rate-limit';
 import type { HubClientsStore } from './clients';
 import { consentPage, waitingPage } from './pages';
+import { newPairingCode, pairingCodeHash } from './pairing';
 import { normalizeScopes, type HubTokens } from './tokens';
 
 /** Pending authorization stored in access_requests.meta for kind `mcp_connect`. */
@@ -26,6 +29,12 @@ export type ConnectMeta = {
   scopes: string[];
   resource?: string;
   pollTokenHash: string;
+  /** pairingCodeHash(requestId, code). The code itself is only on the consent page. */
+  pairingCodeHash: string;
+  /** Wrong codes typed on the phone (apps/api); five deny the request. */
+  pairingAttempts?: number;
+  /** Set by apps/api when the phone allowed with the right code. */
+  pairingVerifiedAt?: string;
   codeIssuedAt?: string;
 };
 
@@ -80,7 +89,14 @@ export class ConsentFlow {
     };
     return {
       clientsStore: this.clients,
-      authorize: (client, params, res) => this.authorize(client, params, res),
+      // The SDK answers other errors with a bare 500 and logs nothing; log them safely.
+      authorize: (client, params, res) =>
+        this.authorize(client, params, res).catch((e: unknown) => {
+          if (!(e instanceof OAuthError)) {
+            this.ctx.logger?.error({ route: 'authorize', ...errorFields(e) }, 'authorize error');
+          }
+          throw e;
+        }),
       challengeForAuthorizationCode: notHere,
       exchangeAuthorizationCode: notHere,
       exchangeRefreshToken: notHere,
@@ -136,11 +152,14 @@ export class ConsentFlow {
 
     const pollToken = randomToken(32);
     const pollTokenHash = hashToken(pollToken);
+    // Unknown emails get a code too, so the page looks the same either way.
+    const pairingCode = newPairingCode();
     const [user] = await this.ctx.db
       .select({ id: users.id })
       .from(users)
       .where(sql`lower(${users.email}) = ${parsed.data}`);
     if (user) {
+      const requestId = randomUUID();
       const meta: ConnectMeta = {
         oauthClientId: client.client_id,
         redirectUri: params.redirectUri,
@@ -150,8 +169,9 @@ export class ConsentFlow {
         scopes: normalizeScopes(params.scopes),
         resource: params.resource?.href,
         pollTokenHash,
+        pairingCodeHash: pairingCodeHash(requestId, pairingCode),
       };
-      await this.createConnectRequest(user.id, clientName, meta);
+      await this.createConnectRequest(requestId, user.id, clientName, meta);
     } else {
       this.rememberDecoy(pollTokenHash);
     }
@@ -160,14 +180,22 @@ export class ConsentFlow {
       redirectHost: host,
       statusUrl: new URL('/authorize/status', this.issuer).href,
       pollToken,
+      pairingCode,
     });
   }
 
-  private async createConnectRequest(userId: string, clientName: string, meta: ConnectMeta) {
+  private async createConnectRequest(
+    requestId: string,
+    userId: string,
+    clientName: string,
+    meta: ConnectMeta,
+  ) {
     const { db } = this.ctx;
     const [row] = await db
       .insert(accessRequests)
       .values({
+        // Chosen up front: it salts the pairing code hash stored in meta.
+        id: requestId,
         userId,
         kind: 'mcp_connect',
         principal: 'mcp:pending',
@@ -175,6 +203,8 @@ export class ConsentFlow {
         resource: '*',
         level: 'read',
         meta,
+        // Same clock as the expiry checks here and in apps/api.
+        createdAt: this.ctx.now(),
       })
       .returning({ id: accessRequests.id });
     const id = row!.id;
@@ -188,8 +218,8 @@ export class ConsentFlow {
     const job: NotifierJob = {
       userId,
       kind: 'access_request',
-      title: `Connect ${clientName}?`,
-      body: `${clientName} wants to connect to Hub. Only allow it if you just tried to connect.`,
+      title: 'Connection request',
+      body: 'An app wants to connect to Hub. Only allow it if you just tried to connect, using the code shown on your computer.',
       data: { requestId: id },
       dedupeKey: `access_request:${id}`,
     };
@@ -254,6 +284,11 @@ export class ConsentFlow {
     }
     if (row.status === 'denied') return { status: 'denied' };
     if (row.status !== 'allowed') return { status: 'expired' };
+    // Allowed or not, nothing is handed out after the request's lifetime.
+    if (expired) return { status: 'expired' };
+    const meta = row.meta as ConnectMeta;
+    // Only an allow where the phone typed the pairing code counts (apps/api records it).
+    if (!meta.pairingCodeHash || !meta.pairingVerifiedAt) return { status: 'expired' };
 
     // Allowed: hand out exactly one code, however many times the page polls.
     const [claimed] = await db
@@ -271,7 +306,6 @@ export class ConsentFlow {
       .returning({ id: accessRequests.id });
     if (!claimed) return { status: 'used' };
 
-    const meta = row.meta as ConnectMeta;
     const [client] = await db
       .select({ id: mcpOauthClients.clientId })
       .from(mcpOauthClients)

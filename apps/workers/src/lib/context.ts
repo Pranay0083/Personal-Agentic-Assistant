@@ -30,7 +30,7 @@ export async function connectorContext(
   const ref = account.tokenRef;
   let tokens: OAuthTokens;
   try {
-    tokens = await deps.secrets.getJson<OAuthTokens>(ref);
+    tokens = await deps.secrets.getJson<OAuthTokens>(ref, { userId: account.userId });
   } catch {
     throw new ReconnectRequiredError(account.provider, 'stored token unreadable');
   }

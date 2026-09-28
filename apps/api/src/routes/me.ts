@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { pushTokens, users } from '@hub/db';
 import { UserSettings } from '@hub/shared';
@@ -75,13 +75,39 @@ export function meRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/me/push-tokens', async (req, reply) => {
     const userId = req.auth.userId;
     const body = parse(PushTokenReq, req.body);
-    await db
-      .insert(pushTokens)
-      .values({ userId, token: body.token, platform: body.platform, createdAt: ctx.now() })
-      .onConflictDoUpdate({
-        target: pushTokens.token,
-        set: { userId, platform: body.platform, createdAt: sql`excluded.created_at` },
+    // A device belongs to whoever is signed in on it: drop the token from any other user
+    // first, so their notifications stop going to this device.
+    const previous = await db.transaction(async (tx) => {
+      const removed = await tx
+        .delete(pushTokens)
+        .where(and(eq(pushTokens.token, body.token), ne(pushTokens.userId, userId)))
+        .returning({ userId: pushTokens.userId });
+      await tx
+        .insert(pushTokens)
+        .values({ userId, token: body.token, platform: body.platform, createdAt: ctx.now() })
+        .onConflictDoUpdate({
+          target: pushTokens.token,
+          set: { userId, platform: body.platform, createdAt: sql`excluded.created_at` },
+        });
+      return removed;
+    });
+    for (const p of previous) {
+      // The token itself is never written to the audit log.
+      await ctx.audit({
+        userId: p.userId,
+        principal: 'user',
+        action: 'push_token.removed',
+        details: { reason: 'registered_by_other_user', platform: body.platform },
       });
+    }
+    if (previous.length > 0) {
+      await ctx.audit({
+        userId,
+        principal: 'user',
+        action: 'push_token.reassigned',
+        details: { platform: body.platform, fromOtherUsers: previous.length },
+      });
+    }
     return reply.code(204).send();
   });
 }

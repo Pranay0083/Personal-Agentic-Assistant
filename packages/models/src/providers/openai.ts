@@ -3,6 +3,8 @@ import type { ModelProviderKind } from '@hub/shared';
 import { ModelConfigError, ModelProviderError, isRetryableStatus } from '../errors';
 import type { GenerateRequest, GenerateResult, ModelProvider } from '../types';
 import { DEFAULT_MAX_TOKENS } from './anthropic';
+import { assertPublicBaseUrl, validateBaseUrl, type LookupFn } from './base-url';
+import { productionDefault } from './env';
 
 type RequestOpts = { timeout?: number; maxRetries?: number };
 
@@ -45,6 +47,10 @@ export type OpenAICompatibleOptions = {
   /** Azure: optional api-version query parameter. */
   apiVersion?: string;
   client?: OpenAIClientLike;
+  /** Enables the production baseUrl rules (https only, public hosts). Default: NODE_ENV. */
+  production?: boolean;
+  /** DNS resolver for the per-call public-host check; tests inject one. */
+  lookup?: LookupFn;
 };
 
 /**
@@ -54,14 +60,21 @@ export type OpenAICompatibleOptions = {
 export class OpenAICompatibleProvider implements ModelProvider {
   readonly kind: OpenAICompatibleKind;
   private readonly client: OpenAIClientLike;
+  private readonly baseURL: string | undefined;
+  private readonly production: boolean;
+  private readonly lookup: LookupFn | undefined;
 
   constructor(opts: OpenAICompatibleOptions) {
     this.kind = opts.kind;
+    this.production = opts.production ?? productionDefault();
+    this.lookup = opts.lookup;
+    const baseURL = opts.baseURL || (opts.client ? undefined : DEFAULT_BASE_URLS[opts.kind]);
+    this.baseURL = baseURL;
+    if (baseURL) validateBaseUrl(baseURL, { production: this.production });
     if (opts.client) {
       this.client = opts.client;
       return;
     }
-    const baseURL = opts.baseURL || DEFAULT_BASE_URLS[opts.kind];
     if ((opts.kind === 'azure' || opts.kind === 'openai_compatible') && !baseURL) {
       throw new ModelConfigError(`${opts.kind} provider needs a baseUrl`);
     }
@@ -100,6 +113,13 @@ export class OpenAICompatibleProvider implements ModelProvider {
   }
 
   async generate(req: GenerateRequest): Promise<GenerateResult> {
+    // Re-checked on every call: DNS for the configured host can change after it was added.
+    if (this.baseURL) {
+      await assertPublicBaseUrl(this.baseURL, {
+        production: this.production,
+        ...(this.lookup ? { lookup: this.lookup } : {}),
+      });
+    }
     let res: OpenAI.Chat.ChatCompletion;
     try {
       res = await this.client.chat.completions.create(this.toParams(req), {

@@ -2,7 +2,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import type { ExpoPushMessage, ExpoPushTicket } from 'expo-server-sdk';
 import { items, people, pushTokens, users, type Db } from '@hub/db';
 import { safeTimeZone } from '@hub/models';
-import type { Logger } from '@hub/server';
+import { errorInfo, type Logger } from '@hub/server';
 import { UserSettings } from '@hub/shared';
 import { QUEUES, type NotifierJob } from '@hub/shared/queues';
 import { isQuietHours, msUntilQuietEnd } from './quiet';
@@ -10,8 +10,8 @@ import { isQuietHours, msUntilQuietEnd } from './quiet';
 /**
  * Quiet hours policy: during quiet hours only `vip` goes out. Everything else is
  * DEFERRED (re-enqueued with a delay until quiet hours end), not dropped, so a
- * "Draft ready" at 23:00 arrives at 07:00. Dedupe happens at send time, so a deferred
- * notification still sends at most once.
+ * "Draft ready" at 23:00 arrives at 07:00. Dedupe happens at send time, per device, so a
+ * deferred or retried notification reaches each device at most once.
  */
 
 export type PushSender = {
@@ -36,6 +36,8 @@ export type NotifierDeps = {
   ) => Promise<unknown>;
   now: () => Date;
   log: Logger;
+  /** Messages per send call (Expo accepts up to 100). Tests use smaller chunks. */
+  chunkSize?: number;
 };
 
 export type NotifyOutcome =
@@ -45,6 +47,7 @@ export type NotifyOutcome =
   | { status: 'sent_fake'; tokens: number; kind: NotifierJob['kind'] };
 
 export const DEDUPE_TTL_SECONDS = 7 * 24 * 3600;
+export const PUSH_CHUNK_SIZE = 100;
 const DEFERRED_FLAG = '_deferred';
 
 async function isVipItem(db: Db, userId: string, itemId: string, vips: string[]): Promise<boolean> {
@@ -104,29 +107,36 @@ export async function processNotification(
     return { status: 'deferred', delayMs };
   }
 
-  const dedupeKey = `notify:${job.dedupeKey}`;
-  if (!(await deps.dedupe.claim(dedupeKey, DEDUPE_TTL_SECONDS))) return { status: 'duplicate' };
+  const tokens = await db
+    .select({ id: pushTokens.id, token: pushTokens.token })
+    .from(pushTokens)
+    .where(eq(pushTokens.userId, job.userId));
+  if (tokens.length === 0) return { status: 'no_tokens' };
 
-  try {
-    const tokens = await db
-      .select({ id: pushTokens.id, token: pushTokens.token })
-      .from(pushTokens)
-      .where(eq(pushTokens.userId, job.userId));
-    if (tokens.length === 0) return { status: 'no_tokens' };
+  // Dedupe per (dedupeKey, device): a retry after a partial failure reaches only the
+  // devices that did not get it, and never re-notifies the ones that did.
+  const claimKey = (tokenId: string) => `notify:${job.dedupeKey}:${tokenId}`;
+  const pending: typeof tokens = [];
+  for (const t of tokens) {
+    if (await deps.dedupe.claim(claimKey(t.id), DEDUPE_TTL_SECONDS)) pending.push(t);
+  }
+  if (pending.length === 0) return { status: 'duplicate' };
 
-    const data: Record<string, string> = { kind };
-    for (const [k, v] of Object.entries(job.data)) if (!k.startsWith('_')) data[k] = v;
+  const data: Record<string, string> = { kind };
+  for (const [k, v] of Object.entries(job.data)) if (!k.startsWith('_')) data[k] = v;
 
-    if (!deps.push) {
-      // Title only: never log message text.
-      log.info(
-        { userId: job.userId, kind, title: job.title, tokens: tokens.length },
-        'push (fake)',
-      );
-      return { status: 'sent_fake', tokens: tokens.length, kind };
-    }
+  if (!deps.push) {
+    // Title only: never log message text.
+    log.info({ userId: job.userId, kind, title: job.title, tokens: pending.length }, 'push (fake)');
+    return { status: 'sent_fake', tokens: pending.length, kind };
+  }
 
-    const messages: ExpoPushMessage[] = tokens.map((t) => ({
+  const chunkSize = Math.max(1, deps.chunkSize ?? PUSH_CHUNK_SIZE);
+  const dead: string[] = [];
+  let sent = 0;
+  for (let i = 0; i < pending.length; i += chunkSize) {
+    const chunk = pending.slice(i, i + chunkSize);
+    const messages: ExpoPushMessage[] = chunk.map((t) => ({
       to: t.token,
       title: job.title,
       body: job.body,
@@ -135,27 +145,31 @@ export async function processNotification(
       priority: kind === 'vip' || kind === 'approval' ? 'high' : 'default',
       ...(kind === 'approval' ? { categoryId: 'approval' } : {}),
     }));
-    const tickets = await deps.push.send(messages);
-    const dead: string[] = [];
-    tickets.forEach((ticket, i) => {
+    let tickets: ExpoPushTicket[];
+    try {
+      tickets = await deps.push.send(messages);
+    } catch (err) {
+      // Release only the devices this chunk and the rest were for; earlier chunks went out.
+      for (const t of pending.slice(i)) await deps.dedupe.release(claimKey(t.id));
+      log.warn(
+        { userId: job.userId, kind, sent, failed: pending.length - i, ...errorInfo(err) },
+        'push partially failed; retrying the rest',
+      );
+      throw err;
+    }
+    sent += chunk.length;
+    tickets.forEach((ticket, j) => {
       if (ticket.status === 'error' && ticket.details?.error === 'DeviceNotRegistered') {
-        const tok = ticket.details.expoPushToken ?? tokens[i]?.token;
+        const tok = ticket.details.expoPushToken ?? chunk[j]?.token;
         if (tok) dead.push(tok);
       }
     });
-    if (dead.length) {
-      await db
-        .delete(pushTokens)
-        .where(and(eq(pushTokens.userId, job.userId), inArray(pushTokens.token, dead)));
-    }
-    log.info(
-      { userId: job.userId, kind, tokens: tokens.length, removed: dead.length },
-      'push sent',
-    );
-    return { status: 'sent', tokens: tokens.length, removed: dead.length, kind };
-  } catch (err) {
-    // Let the retry try again.
-    await deps.dedupe.release(dedupeKey);
-    throw err;
   }
+  if (dead.length) {
+    await db
+      .delete(pushTokens)
+      .where(and(eq(pushTokens.userId, job.userId), inArray(pushTokens.token, dead)));
+  }
+  log.info({ userId: job.userId, kind, tokens: sent, removed: dead.length }, 'push sent');
+  return { status: 'sent', tokens: sent, removed: dead.length, kind };
 }

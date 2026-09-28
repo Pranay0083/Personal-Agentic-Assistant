@@ -16,10 +16,11 @@ import {
 } from '@hub/db';
 import { createTestDb } from '@hub/db/testing';
 import { createRouter, FakeProvider, type ModelRouter, type RouteRequest } from '@hub/models';
-import { LocalKeyProvider, seal } from '@hub/server/secrets';
+import { itemBodyContext, LocalKeyProvider, seal } from '@hub/server/secrets';
 import { GmailSendPayload } from '@hub/shared';
 import type { LiveEvent, NotifierJob } from '@hub/shared/queues';
 import type { AgentDeps } from './context';
+import { extractorDedupeKey, normalizeTaskTitle } from './extractor';
 import { runAgentJob } from './index';
 
 let t: Awaited<ReturnType<typeof createTestDb>>;
@@ -106,7 +107,7 @@ async function addEmail(
   } = {},
 ) {
   const body = over.body ?? 'Hi! Can you send the Q3 deck by Thursday?';
-  const env = await seal(keys, body);
+  const env = await seal(keys, body, itemBodyContext(accountId));
   const [b] = await db
     .insert(itemBodies)
     .values({ accountId, ...env })
@@ -234,7 +235,7 @@ describe('extractor', () => {
       accountId,
       createdBy: 'agent:extractor',
       project: 'Q3',
-      dedupeKey: `extractor:${item.id}:0`,
+      dedupeKey: extractorDedupeKey(item.id, 'Send the Q3 deck to Meera'),
     });
     expect(rows[0]!.dueAt!.toISOString()).toBe('2026-10-01T11:30:00.000Z');
 
@@ -242,7 +243,9 @@ describe('extractor', () => {
     expect(notify).toMatchObject({
       kind: 'task',
       dedupeKey: `task:${rows[0]!.id}`,
-      body: 'Send the Q3 deck to Meera · due Thursday',
+      title: 'New task',
+      body: 'Due Thursday',
+      data: { taskId: rows[0]!.id, itemId: item.id },
     });
     expect(live).toContainEqual({ type: 'task.created', taskId: rows[0]!.id });
     const [it] = await db.select().from(items).where(eq(items.id, item.id));
@@ -313,6 +316,9 @@ describe('reply', () => {
     expect(live).toContainEqual({ type: 'proposal.created', proposalId: p!.id });
     expect(jobs.at(-1)!.data as NotifierJob).toMatchObject({
       kind: 'approval',
+      title: 'Draft ready',
+      body: 'A reply is waiting for your approval',
+      data: { proposalId: p!.id, itemId: item.id },
       dedupeKey: `proposal:${p!.id}`,
     });
 
@@ -375,7 +381,13 @@ describe('brief', () => {
       'Raj asked you to book the venue.',
     ]);
     expect(b!.model).toBe('claude-sonnet-5');
-    expect(jobs[0]!.data).toMatchObject({ kind: 'brief', dedupeKey: `brief:${userId}:2026-09-28` });
+    expect(jobs[0]!.data).toMatchObject({
+      kind: 'brief',
+      title: 'Your daily brief is ready',
+      data: { briefId: b!.id },
+      dedupeKey: `brief:${userId}:2026-09-28`,
+    });
+    expect(JSON.stringify(jobs[0]!.data)).not.toContain('Q3 deck');
     expect(live).toContainEqual({ type: 'brief.created', briefId: b!.id });
 
     // Upsert on (user, date).
@@ -388,5 +400,169 @@ describe('brief', () => {
     const out = await runAgentJob(deps, { agent: 'brief', userId, date: '2026-09-28' });
     expect(out.status).toBe('paused');
     expect(prompts).toHaveLength(0);
+  });
+});
+
+/** A router that returns canned JSON per agent, so tests can steer the model's output. */
+function scriptedDeps(answers: Record<string, () => unknown>): AgentDeps {
+  return {
+    ...makeDeps(),
+    router: {
+      generate: async (req) => {
+        prompts.push(req);
+        const answer = answers[req.agent];
+        if (!answer) throw new Error(`no scripted answer for ${req.agent}`);
+        return {
+          text: JSON.stringify(answer()),
+          toolCalls: [],
+          usage: { inputTokens: 1, outputTokens: 1 },
+          model: 'scripted',
+          provider: 'fake',
+          fallbackUsed: false,
+          costUsd: 0,
+        };
+      },
+    },
+  };
+}
+
+describe('extractor idempotency', () => {
+  it('keys tasks by normalized title, so a retry with reordered output adds nothing', async () => {
+    let order = ['Send the Q3 deck to Meera', 'Book the offsite venue'];
+    const d = scriptedDeps({
+      extractor: () => ({
+        tasks: order.map((title) => ({ title, due: null, dueTime: null, confidence: 0.9 })),
+      }),
+    });
+    const item = await addEmail();
+    expect(await runAgentJob(d, { agent: 'extractor', itemId: item.id })).toEqual({
+      status: 'extracted',
+      created: 2,
+    });
+    // The retried run returns the same tasks in another order, with cosmetic differences.
+    order = ['book the offsite venue.', '  Send the Q3 deck   to Meera!'];
+    expect(await runAgentJob(d, { agent: 'extractor', itemId: item.id })).toEqual({
+      status: 'extracted',
+      created: 0,
+    });
+    const rows = await db.select().from(tasks).where(eq(tasks.userId, userId));
+    expect(rows.map((r) => r.title).sort()).toEqual([
+      'Book the offsite venue',
+      'Send the Q3 deck to Meera',
+    ]);
+    expect(normalizeTaskTitle('  Send the Q3 deck   to Meera!')).toBe('send the q3 deck to meera');
+    expect(extractorDedupeKey(item.id, 'A')).not.toBe(extractorDedupeKey(item.id, 'B'));
+  });
+});
+
+describe('push notifications carry no message-derived text', () => {
+  const SUBJECT = 'Merger codename BLUEBIRD';
+  const SENDER = 'Victoria Vipsworth';
+  const ADDRESS = 'victoria@vip.example';
+  const BODY = 'Confidential: the BLUEBIRD numbers are attached, reply by Wednesday.';
+  const SUMMARY = 'Victoria wants the BLUEBIRD numbers';
+
+  const notifierJobs = () =>
+    jobs.filter((j) => j.queue === 'notifier').map((j) => j.data as NotifierJob);
+  const assertGeneric = (list: NotifierJob[]) => {
+    expect(list.length).toBeGreaterThan(0);
+    for (const job of list) {
+      const text = JSON.stringify(job);
+      for (const secret of [
+        'BLUEBIRD',
+        'Victoria',
+        'Vipsworth',
+        ADDRESS,
+        'Confidential',
+        'Merger',
+      ]) {
+        expect(text, `${job.kind} notification leaks "${secret}"`).not.toContain(secret);
+      }
+      // data carries ids only.
+      for (const v of Object.values(job.data)) expect(v).toMatch(/^[0-9a-f-]{36}$/);
+    }
+  };
+
+  beforeEach(async () => {
+    await db
+      .update(users)
+      .set({ settings: { vips: [ADDRESS] } })
+      .where(eq(users.id, userId));
+  });
+
+  it('triage (VIP fyi), extractor (task and VIP), reply and brief', async () => {
+    let bucket: 'fyi' | 'needs_you' = 'fyi';
+    let extracted: unknown[] = [];
+    const d = scriptedDeps({
+      triage: () => ({ bucket, summary: SUMMARY, expectsReply: true, statusLabel: 'BLUEBIRD' }),
+      extractor: () => ({ tasks: extracted }),
+      reply: () => ({ body: 'Sure, BLUEBIRD numbers coming.', topic: 'BLUEBIRD numbers' }),
+      brief: () => ({ headline: 'BLUEBIRD from Victoria is the big one', bullets: [SUMMARY] }),
+    });
+    const email = () =>
+      addEmail({ author: SENDER, authorAddress: ADDRESS, title: SUBJECT, body: BODY });
+
+    // VIP fyi item → "New message from a VIP".
+    const fyi = await email();
+    await runAgentJob(d, { agent: 'triage', itemId: fyi.id });
+    expect(notifierJobs().map((j) => j.kind)).toEqual(['vip']);
+
+    // needs_you with no task → "A VIP needs you".
+    bucket = 'needs_you';
+    const ask = await email();
+    await runAgentJob(d, { agent: 'triage', itemId: ask.id });
+    await runAgentJob(d, { agent: 'extractor', itemId: ask.id });
+
+    // A task with a due date → "New task" / "Due Wednesday".
+    extracted = [{ title: 'Send Victoria the BLUEBIRD numbers', due: '2026-09-30', dueTime: null }];
+    const withTask = await email();
+    await runAgentJob(d, { agent: 'extractor', itemId: withTask.id });
+    await runAgentJob(d, { agent: 'reply', itemId: withTask.id });
+    await runAgentJob(d, { agent: 'brief', userId, date: '2026-09-28' });
+
+    const list = notifierJobs();
+    expect(list.map((j) => j.kind).sort()).toEqual(['approval', 'brief', 'task', 'vip', 'vip']);
+    expect(list.find((j) => j.kind === 'task')).toMatchObject({
+      title: 'New task',
+      body: 'Due Wednesday',
+    });
+    expect(list.filter((j) => j.kind === 'vip').map((j) => j.title)).toEqual([
+      'New message from a VIP',
+      'A VIP needs you',
+    ]);
+    assertGeneric(list);
+  });
+});
+
+describe('brief: orphaned tasks', () => {
+  it("withholds agent-created tasks whose account was deleted, keeps the user's own", async () => {
+    const [own] = await db
+      .insert(tasks)
+      .values({ userId, title: 'Renew passport', createdBy: 'user' })
+      .returning();
+    const [orphan] = await db
+      .insert(tasks)
+      .values({
+        userId,
+        title: 'Reply to the lawyer about the settlement',
+        createdBy: 'agent:extractor',
+        accountId: null,
+        sourceItemId: null,
+      })
+      .returning();
+    const d = scriptedDeps({ brief: () => ({ headline: 'One thing today.', bullets: [] }) });
+    expect((await runAgentJob(d, { agent: 'brief', userId, date: '2026-09-28' })).status).toBe(
+      'created',
+    );
+    const sent = prompts.at(-1)!.messages[0]!.content;
+    expect(sent).toContain('Renew passport');
+    expect(sent).not.toContain('settlement');
+    const [read] = await db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.userId, userId), eq(auditLog.action, 'agent.read')));
+    const ids = (read!.details as { taskIds: string[] }).taskIds;
+    expect(ids).toContain(own!.id);
+    expect(ids).not.toContain(orphan!.id);
   });
 });

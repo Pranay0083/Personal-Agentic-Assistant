@@ -18,6 +18,7 @@ import {
   type AgentOutcome,
   type ItemContext,
 } from './context';
+import { PUSH_TEXT } from '../notifier/text';
 import { REPLY_SYSTEM, ReplyOutput } from './prompts';
 
 const PRINCIPAL = 'agent:reply';
@@ -161,8 +162,8 @@ export async function runReply(deps: AgentDeps, itemId: string): Promise<AgentOu
   const job: NotifierJob = {
     userId,
     kind: 'approval',
-    title: 'Draft ready',
-    body: title,
+    // Never the proposal title: it names the sender and the topic.
+    ...PUSH_TEXT.approval,
     data: { proposalId: row.id, itemId },
     dedupeKey: `proposal:${row.id}`,
   };

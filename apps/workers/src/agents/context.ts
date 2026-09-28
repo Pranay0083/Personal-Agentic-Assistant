@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { accounts, audit, itemBodies, items, users, type Db } from '@hub/db';
 import {
   fenceUntrusted,
@@ -9,7 +9,7 @@ import {
 } from '@hub/models';
 import { can, type Principal } from '@hub/policy';
 import type { Logger } from '@hub/server';
-import { open, type KeyProvider } from '@hub/server/secrets';
+import { itemBodyContext, open, type KeyProvider } from '@hub/server/secrets';
 import { UserSettings, type DataResource } from '@hub/shared';
 import type { LiveEvent, QueueName } from '@hub/shared/queues';
 
@@ -144,9 +144,12 @@ export async function itemContent(
   const { item } = ctx;
   let body: string | null = null;
   if (!ctx.settings.keepBodiesLocal && item.bodyRef) {
-    const [row] = await deps.db.select().from(itemBodies).where(eq(itemBodies.id, item.bodyRef));
+    const [row] = await deps.db
+      .select()
+      .from(itemBodies)
+      .where(and(eq(itemBodies.id, item.bodyRef), eq(itemBodies.accountId, item.accountId)));
     if (row && (!row.expiresAt || row.expiresAt > deps.now())) {
-      body = (await open(deps.keys, row)).toString('utf8');
+      body = (await open(deps.keys, row, itemBodyContext(item.accountId))).toString('utf8');
     }
   }
   const from = [item.author, item.authorAddress ? `<${item.authorAddress}>` : null]

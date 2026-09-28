@@ -4,6 +4,7 @@ import { getOAuthProtectedResourceMetadataUrl } from '@modelcontextprotocol/sdk/
 import { hostHeaderValidation } from '@modelcontextprotocol/sdk/server/middleware/hostHeaderValidation.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { resolveCtx, type McpDeps } from './deps';
+import { errorFields } from './log';
 import { oauthRouter } from './oauth/router';
 import type { McpAuthExtra } from './oauth/tokens';
 import { createHubServer } from './tools';
@@ -115,7 +116,7 @@ export function buildMcpApp(deps: McpDeps & { allowedHosts?: string[] }): Expres
         await server.connect(transport);
         await transport.handleRequest(req, res, req.body);
       } catch (e) {
-        ctx.logger?.error({ err: (e as Error).message }, 'mcp request failed');
+        ctx.logger?.error({ route: 'mcp', ...errorFields(e) }, 'mcp request failed');
         if (!res.headersSent) {
           res.status(500).json({
             jsonrpc: '2.0',
@@ -131,13 +132,13 @@ export function buildMcpApp(deps: McpDeps & { allowedHosts?: string[] }): Expres
     res.json({ ok: true });
   });
 
-  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  app.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
     const status = (err as { status?: number })?.status;
     if (status && status >= 400 && status < 500) {
       if (!res.headersSent) res.status(status).json({ error: 'invalid_request' });
       return;
     }
-    ctx.logger?.error({ err: (err as Error)?.message }, 'unhandled');
+    ctx.logger?.error({ route: req.path, method: req.method, ...errorFields(err) }, 'unhandled');
     if (!res.headersSent) res.status(500).json({ error: 'server_error' });
   });
 

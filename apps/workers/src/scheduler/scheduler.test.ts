@@ -1,9 +1,28 @@
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { accessRequests, accounts, briefs, subscriptions } from '@hub/db';
+import { and, inArray } from 'drizzle-orm';
+import {
+  accessRequests,
+  accounts,
+  auditLog,
+  briefs,
+  itemBodies,
+  items,
+  subscriptions,
+} from '@hub/db';
+import { itemBodyContext, seal } from '@hub/server/secrets';
 import { QUEUES } from '@hub/shared/queues';
 import { createHarness, PERSONAL, WORK, type Harness } from '../lib/testing';
-import { catchupSync, dailyBriefs, expireGrants, localClock, renewSubscriptions } from './index';
+import {
+  catchupSync,
+  dailyBriefs,
+  expireGrants,
+  localClock,
+  purgeExpiredBodies,
+  renewSubscriptions,
+  runSchedulerTask,
+  SCHEDULES,
+} from './index';
 
 let h: Harness;
 
@@ -160,5 +179,90 @@ describe('expire-grants', () => {
     const rows = await h.db.select().from(accessRequests);
     const st = (id: string) => rows.find((r) => r.id === id)!.status;
     expect([st(a!.id), st(b!.id), st(c!.id)]).toEqual(['expired', 'pending', 'approved']);
+  });
+});
+
+describe('purge-expired-bodies', () => {
+  it('is scheduled daily', () => {
+    expect(SCHEDULES.find((x) => x.id === 'purge-expired-bodies')?.repeat.pattern).toMatch(
+      /^\d+ \d+ \* \* \*$/,
+    );
+  });
+
+  it('deletes expired bodies in batches, clears body_ref, audits counts per user', async () => {
+    const now = new Date('2026-09-28T03:43:00Z');
+    h.setNow(now);
+    const past = new Date(now.getTime() - 3600_000);
+    const future = new Date(now.getTime() + 86400_000);
+    const u1 = await h.createUser();
+    const u2 = await h.createUser();
+    const a1 = await h.connectAccount(u1.id, WORK);
+    const a2 = await h.connectAccount(u2.id, WORK);
+
+    const addItem = async (accountId: string, expiresAt: Date | null, n: number) => {
+      const env = await seal(h.keys, `Body ${n} SECRET`, itemBodyContext(accountId));
+      const [b] = await h.db
+        .insert(itemBodies)
+        .values({ accountId, ...env, expiresAt })
+        .returning();
+      const [it] = await h.db
+        .insert(items)
+        .values({
+          accountId,
+          kind: 'email',
+          externalId: `purge-${accountId}-${n}`,
+          bodyRef: b!.id,
+          receivedAt: now,
+        })
+        .returning();
+      return { itemId: it!.id, bodyId: b!.id };
+    };
+    const expired1 = await Promise.all([0, 1, 2, 3, 4].map((n) => addItem(a1.id, past, n)));
+    const expired2 = await addItem(a2.id, past, 9);
+    const kept = await addItem(a1.id, future, 10);
+    const noExpiry = await addItem(a2.id, null, 11);
+
+    const out = await purgeExpiredBodies(h.deps, { batchSize: 2 });
+    expect(out).toMatchObject({ deleted: 6, users: 2 });
+    expect(out.batches).toBeGreaterThanOrEqual(3);
+
+    const bodyIds = [...expired1, expired2, kept, noExpiry].map((x) => x.bodyId);
+    const left = await h.db.select().from(itemBodies).where(inArray(itemBodies.id, bodyIds));
+    expect(left.map((b) => b.id).sort()).toEqual([kept.bodyId, noExpiry.bodyId].sort());
+    const refs = await h.db
+      .select({ id: items.id, bodyRef: items.bodyRef })
+      .from(items)
+      .where(
+        inArray(
+          items.id,
+          [...expired1, expired2, kept].map((x) => x.itemId),
+        ),
+      );
+    for (const r of refs) {
+      expect(r.bodyRef).toBe(r.id === kept.itemId ? kept.bodyId : null);
+    }
+
+    const audits = await h.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.action, 'retention.bodies_purged'),
+          inArray(auditLog.userId, [u1.id, u2.id]),
+        ),
+      );
+    expect(audits.map((a) => [a.userId, a.details]).sort()).toEqual(
+      [
+        [u1.id, { deleted: 5 }],
+        [u2.id, { deleted: 1 }],
+      ].sort(),
+    );
+    expect(JSON.stringify(audits)).not.toContain('SECRET');
+
+    // Nothing left to do: a second run is a no-op and writes no audit rows.
+    expect(await runSchedulerTask(h.deps, { task: 'purge-expired-bodies' })).toMatchObject({
+      deleted: 0,
+      users: 0,
+    });
   });
 });

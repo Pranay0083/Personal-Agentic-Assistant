@@ -1,27 +1,26 @@
-import { env } from '../env';
-import type { KeyProvider } from './envelope';
-import { KmsKeyProvider } from './kms';
-import { LocalKeyProvider } from './local';
+import type { Db } from '@hub/db';
+import { keyProvider, writeKeyProvider } from './providers';
+import { SecretStore } from './store';
 
 export * from './envelope';
 export { LocalKeyProvider } from './local';
 export { KmsKeyProvider } from './kms';
-export { SecretStore } from './store';
+export { keyProvider, writeKeyProvider } from './providers';
+export {
+  SecretStore,
+  WriteSecretAccessError,
+  isWriteKind,
+  type SecretExpectation,
+  type SecretStoreOptions,
+} from './store';
 
-let provider: KeyProvider | undefined;
-
-/** The configured key provider: local master key in dev, KMS in production. */
-export function keyProvider(): KeyProvider {
-  if (provider) return provider;
-  const e = env();
-  if (e.SECRETS_PROVIDER === 'kms') {
-    if (!e.KMS_KEY_ID) throw new Error('KMS_KEY_ID is required when SECRETS_PROVIDER=kms');
-    provider = new KmsKeyProvider(e.KMS_KEY_ID);
-  } else {
-    if (e.NODE_ENV === 'production')
-      throw new Error('SECRETS_PROVIDER=local is not allowed in production');
-    if (!e.LOCAL_MASTER_KEY) throw new Error('LOCAL_MASTER_KEY is not set (see .env.example)');
-    provider = new LocalKeyProvider(e.LOCAL_MASTER_KEY);
-  }
-  return provider;
+/**
+ * A SecretStore on the configured keys. Pass `allowWriteDecrypt: true` only in the
+ * executor process: it is the one place write-scope tokens are decrypted.
+ */
+export function createSecretStore(db: Db, opts: { allowWriteDecrypt?: boolean } = {}) {
+  return new SecretStore(db, keyProvider(), {
+    writeKeys: writeKeyProvider(),
+    allowWriteDecrypt: opts.allowWriteDecrypt === true,
+  });
 }

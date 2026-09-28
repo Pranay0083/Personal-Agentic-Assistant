@@ -16,7 +16,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "pnpm -r --parallel typecheck"
+    "typecheck": "pnpm -r --parallel typecheck",
+    "acceptance": "node scripts/acceptance.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

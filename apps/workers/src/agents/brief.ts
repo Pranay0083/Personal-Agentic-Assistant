@@ -18,6 +18,7 @@ import {
   type AgentDeps,
   type AgentOutcome,
 } from './context';
+import { PUSH_TEXT } from '../notifier/text';
 import { BRIEF_SYSTEM, BriefOutput } from './prompts';
 
 const PRINCIPAL = 'agent:brief';
@@ -59,6 +60,7 @@ export async function runBrief(
       project: tasks.project,
       accountId: tasks.accountId,
       sourceItemId: tasks.sourceItemId,
+      createdBy: tasks.createdBy,
       kind: items.kind,
       itemAccountId: items.accountId,
       author: items.author,
@@ -85,6 +87,10 @@ export async function runBrief(
       ok = !!r && (await mayRead(t.itemAccountId, r));
     } else if (t.accountId) {
       ok = await mayReadAny(t.accountId);
+    } else if (t.createdBy.startsWith('agent:')) {
+      // An agent extracted it from an account that has since been deleted (account_id and
+      // source_item_id were set NULL): its account's policy can no longer be checked.
+      ok = false;
     } else {
       ok = true; // the user's own task, not tied to any account
     }
@@ -193,9 +199,9 @@ export async function runBrief(
   const job: NotifierJob = {
     userId,
     kind: 'brief',
-    title: 'Your morning brief',
-    body: headline,
-    data: { briefId, date },
+    // Never the headline: it summarises message content.
+    ...PUSH_TEXT.brief,
+    data: { briefId },
     dedupeKey: `brief:${userId}:${date}`,
   };
   await deps.enqueue(QUEUES.notifier, job, { jobId: jobId('notify', 'brief', userId, date) });

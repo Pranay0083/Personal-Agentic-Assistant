@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { auditLog, items, mcpClients, providers, secrets } from '@hub/db';
 import type { Logger } from '@hub/server';
 import { buildApi } from './app';
-import { setup, type TestEnv } from './test-helpers';
+import { setup, TEST_CONFIG, type TestEnv } from './test-helpers';
 
 const SECRET = 'sk-ant-api03-SUPER-SECRET-VALUE';
 const logLines: string[] = [];
@@ -136,6 +136,61 @@ describe('models', () => {
     ).toHaveLength(0);
     const after = (await env.app.inject({ url: '/models', headers: auth })).json();
     expect(after.agents.find((a: { agent: string }) => a.agent === 'triage').providerId).toBeNull();
+  });
+});
+
+describe('provider baseUrl validation', () => {
+  const add = (app: TestEnv['app'], payload: Record<string, unknown>) =>
+    app.inject({ method: 'POST', url: '/models/providers', headers: auth, payload });
+
+  it('requires https, allowing http only for localhost outside production', async () => {
+    for (const baseUrl of [
+      'http://gw.example.com/v1',
+      'ftp://gw.example.com',
+      'file:///etc/passwd',
+      'not a url',
+      'https://user:pw@gw.example.com/v1',
+    ]) {
+      const res = await add(env.app, { kind: 'openai_compatible', config: { baseUrl } });
+      expect(res.statusCode, baseUrl).toBe(400);
+      expect(res.json().message).toMatch(/^config\.baseUrl: /);
+    }
+    for (const baseUrl of ['https://gw.example.com/v1', 'http://localhost:11434/v1']) {
+      const res = await add(env.app, { kind: 'openai_compatible', config: { baseUrl } });
+      expect(res.statusCode, baseUrl).toBe(200);
+    }
+    const rows = await env.t.db.select().from(providers).where(eq(providers.userId, userId));
+    expect(rows.map((r) => (r.config as Record<string, string>).baseUrl)).not.toContain(
+      'http://gw.example.com/v1',
+    );
+  });
+
+  it('in production rejects private hosts, localhost and fake providers', async () => {
+    const prod = await buildApi({
+      ...env.deps,
+      logger: false,
+      config: { ...TEST_CONFIG, production: true },
+    });
+    try {
+      for (const baseUrl of [
+        'http://localhost:11434/v1',
+        'https://localhost/v1',
+        'https://127.0.0.1/v1',
+        'https://169.254.169.254/latest',
+        'https://10.0.0.8/v1',
+        'https://[::1]/v1',
+        // .test never resolves: unresolvable hosts are refused too.
+        'https://gw.hub.test/v1',
+      ]) {
+        const res = await add(prod, { kind: 'openai_compatible', config: { baseUrl } });
+        expect(res.statusCode, baseUrl).toBe(400);
+      }
+      const fake = await add(prod, { kind: 'fake', config: {} });
+      expect(fake.statusCode).toBe(400);
+      expect(fake.json().message).toMatch(/fake is not available/);
+    } finally {
+      await prod.close();
+    }
   });
 });
 

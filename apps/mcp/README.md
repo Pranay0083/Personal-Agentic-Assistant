@@ -37,15 +37,41 @@ No client ID or secret is needed; Claude registers itself.
 1. The client registers (dynamic client registration) and opens `/authorize` with PKCE.
 2. The page shows the client's name and where you'll be sent back, and asks for your
    **Hub email**. Nothing else: no password.
-3. Your phone gets a push, **"Connect Claude Code?"**, and the request shows in
-   **Approvals**. Only allow it if you just started connecting. The browser tab waits
-   and moves on as soon as you decide.
-4. On **Allow**, the tab returns to the client with a one-time code (10 minutes). The
-   client exchanges it for an access token (1 hour) and a refresh token (rotated on
-   every use). On **Deny**, or after 10 minutes without an answer, the tab says so.
+3. The next page shows a **6-digit pairing code** ("Enter this code on your phone").
+   Your phone gets a push, **"Connect Claude Code?"**, and the request shows in
+   **Approvals** with the name tagged **unverified name** (clients choose their own names
+   when they register) and the host the code will be sent to. **Allow** stays disabled
+   until you type the code from your computer. No code on your screen means you didn't
+   start this: deny it.
+4. On **Allow** with the right code, the tab returns to the client with a one-time code
+   (10 minutes). The client exchanges it for an access token (1 hour) and a refresh
+   token. On **Deny**, after 5 wrong codes, or 10 minutes after the page was submitted,
+   the tab says so and no code is ever issued, even for a request that was allowed.
 
-The page gives the same answer whether or not an email has an account, and the form
-is rate-limited per IP and per email.
+Why the code: without it, anyone could register a client called "Claude Code", type your
+email and wait for a reflexive tap on your phone. The code ties the tap to the browser
+tab in front of you. Only a salted hash of it (`sha256(<request id>:<code>)`) is stored,
+in `access_requests.meta`; `apps/api` checks it in constant time on
+`POST /access-requests/:id/allow` (`pairingCode`, required for `mcp_connect`), counts
+wrong attempts, rejects requests older than 10 minutes with `409 expired`, and records
+`pairingVerifiedAt`. This server only issues a code for a request that carries it.
+
+The page gives the same answer (and shows a code) whether or not an email has an
+account, and the form is rate-limited per IP and per email.
+
+## Tokens
+
+- Access tokens last 1 hour. Refresh tokens rotate on every use.
+- A refresh chain ends **90 days** after the phone approval, or after **30 days** with
+  no use (no MCP request and no refresh). The client then has to connect again, which
+  needs a new approval on the phone.
+- **Reuse detection:** presenting a refresh token that was already rotated out (or the
+  same token twice at once) revokes that connection: its tokens stop working and its
+  temporary grants end. Logged as `mcp.token.refresh_reuse`. The last few rotated-out
+  hashes live in `mcp_oauth_clients.metadata.hubRefresh`, keyed by `mcp_clients.id`,
+  with the chain's start and last refresh; they are never returned to clients.
+- `POST /revoke` with either token disconnects the client and ends its grants, the same
+  as revoking it on the phone.
 
 Afterwards the client appears on the **Permissions** screen as `mcp:<id>`. What it can
 read or propose follows your preset and per-account rules; personal accounts stay
@@ -80,4 +106,8 @@ refuses.
 | `POST /token`                                                                        | `authorization_code` (PKCE S256) and `refresh_token` |
 | `POST /revoke`                                                                       | Token revocation (RFC 7009)                          |
 
-Only hashes of client secrets, codes and tokens are stored.
+Only hashes of client secrets, pairing codes, auth codes and tokens are stored.
+
+Errors are logged as the route or tool name, the error class and the database error
+code only (never the message: database errors include query parameters). Clients get a
+generic error.

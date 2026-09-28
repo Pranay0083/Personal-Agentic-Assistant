@@ -1,5 +1,6 @@
 import type { Response } from 'express';
 import { escapeHtml, sendPage } from './html';
+import { formatPairingCode } from './pairing';
 
 export type ConsentFields = Record<string, string | undefined>;
 
@@ -40,7 +41,8 @@ export function consentPage(
       `<input id="email" name="hub_email" type="email" autocomplete="email" required maxlength="254">` +
       (opts.error ? `<div class="status warn">${escapeHtml(opts.error)}</div>` : '') +
       `<button type="submit">Ask on my phone</button></form>` +
-      `<p style="margin-top:16px"><small>You approve the connection in the Hub app. Nothing is ` +
+      `<p style="margin-top:16px"><small>You approve the connection in the Hub app by typing ` +
+      `the code the next page shows. Nothing is ` +
       `shared until you do, and you can revoke it any time from Permissions.</small></p>`,
     undefined,
     opts.error ? 429 : 200,
@@ -69,7 +71,13 @@ const POLL_SCRIPT = `
 
 export function waitingPage(
   res: Response,
-  opts: { clientName: string; redirectHost: string; statusUrl: string; pollToken: string },
+  opts: {
+    clientName: string;
+    redirectHost: string;
+    statusUrl: string;
+    pollToken: string;
+    pairingCode: string;
+  },
 ) {
   // JSON in a non-executed script tag; `<` escaped so it cannot close the tag.
   const cfg = JSON.stringify({ url: opts.statusUrl, t: opts.pollToken }).replace(/</g, '\\u003c');
@@ -77,10 +85,14 @@ export function waitingPage(
     res,
     'Approve on your phone',
     `<div class="tag">Hub</div><h1>Check your phone</h1>` +
+      `<div class="card pair"><div class="tag">Enter this code on your phone</div>` +
+      `<div class="code" id="pairing-code">${escapeHtml(formatPairingCode(opts.pairingCode))}</div>` +
+      `<p><small>Never type it anywhere else, and never read it out to anyone.</small></p></div>` +
       clientCard(opts.clientName, opts.redirectHost) +
       `<p>If that email has a Hub account, the app just got a request. Open Hub, go to ` +
-      `Approvals and allow <span class="strong">${escapeHtml(opts.clientName)}</span>. ` +
-      `Keep this tab open.</p>` +
+      `Approvals, type the code above and allow ` +
+      `<span class="strong">${escapeHtml(opts.clientName)}</span>. ` +
+      `If you didn't start this, deny it. Keep this tab open.</p>` +
       `<div id="status" class="status" role="status" aria-live="polite"><span class="dot"></span>` +
       `<span id="status-text">Waiting for approval…</span></div>` +
       `<script type="application/json" id="cfg">${cfg}</script>`,

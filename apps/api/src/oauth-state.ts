@@ -1,8 +1,10 @@
 import { randomBytes } from 'node:crypto';
 import { jwtVerify, SignJWT } from 'jose';
+import { hashToken, type redis } from '@hub/server';
+import { open, seal, type Envelope, type KeyProvider } from '@hub/server/secrets';
 import { Provider } from '@hub/shared';
 import { z } from 'zod';
-import type { ApiConfig } from './deps';
+import type { ApiConfig, OAuthStore } from './deps';
 import { badRequest } from './http';
 
 const AUDIENCE = 'hub:oauth-state';
@@ -105,4 +107,61 @@ export function withQuery(base: string, params: Record<string, string>): string 
   const url = new URL(base);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   return url.toString();
+}
+
+// ---- Single-use state and pending connect results ----
+
+/** How long a callback result waits for the app to call POST /accounts/complete. */
+export const PENDING_TTL_SECONDS = 10 * 60;
+
+const nonceKey = (nonce: string) => `oauth:nonce:${hashToken(nonce)}`;
+// The id is a bearer secret for the sealed code, so only its hash is used as the key.
+const pendingKey = (id: string) => `oauth:pending:${hashToken(id)}`;
+
+/** Marks the state's nonce used. False if this state was already presented once. */
+export async function claimStateNonce(store: OAuthStore, state: OAuthState): Promise<boolean> {
+  return store.setNx(nonceKey(state.nonce), '1', STATE_TTL_SECONDS);
+}
+
+export const PendingConnect = z.object({ code: z.string(), state: OAuthState });
+export type PendingConnect = z.infer<typeof PendingConnect>;
+
+/** Seals the code and state claims under a fresh random single-use id and returns the id. */
+export async function putPending(
+  store: OAuthStore,
+  keys: KeyProvider,
+  pending: PendingConnect,
+): Promise<string> {
+  const id = randomBytes(32).toString('base64url');
+  const envelope = await seal(keys, JSON.stringify(pending));
+  if (!(await store.setNx(pendingKey(id), JSON.stringify(envelope), PENDING_TTL_SECONDS))) {
+    throw new Error('pending id collision');
+  }
+  return id;
+}
+
+/** Loads and deletes a pending connect in one step. Null if unknown, expired or already used. */
+export async function takePending(
+  store: OAuthStore,
+  keys: KeyProvider,
+  id: string,
+): Promise<PendingConnect | null> {
+  const raw = await store.take(pendingKey(id));
+  if (!raw) return null;
+  try {
+    const plain = await open(keys, JSON.parse(raw) as Envelope);
+    const r = PendingConnect.safeParse(JSON.parse(plain.toString('utf8')));
+    return r.success ? r.data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** OAuthStore on Redis: SET NX EX and GETDEL are both single atomic commands. */
+export function redisOAuthStore(r: ReturnType<typeof redis>): OAuthStore {
+  return {
+    setNx: async (key, value, ttlSeconds) =>
+      (await r.set(key, value, 'EX', ttlSeconds, 'NX')) === 'OK',
+    take: (key) => r.getdel(key),
+  };
 }

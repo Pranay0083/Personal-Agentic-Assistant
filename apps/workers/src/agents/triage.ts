@@ -18,6 +18,7 @@ import {
   type AgentOutcome,
   type ItemContext,
 } from './context';
+import { PUSH_TEXT } from '../notifier/text';
 import { TRIAGE_SYSTEM, TriageOutput } from './prompts';
 
 const PRINCIPAL = 'agent:triage';
@@ -186,8 +187,8 @@ export async function runTriage(deps: AgentDeps, itemId: string): Promise<AgentO
     const job: NotifierJob = {
       userId,
       kind: 'vip',
-      title: `${ctx.item.author ?? 'VIP'} wrote`,
-      body: summary,
+      // Generic text only: push leaves our systems (see NotifierJob).
+      ...PUSH_TEXT.vipMessage,
       data: { itemId },
       dedupeKey: `vip:${itemId}`,
     };

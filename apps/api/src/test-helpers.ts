@@ -7,7 +7,7 @@ import type { RouteRequest, RouteResult } from '@hub/models';
 import { LocalKeyProvider, SecretStore } from '@hub/server/secrets';
 import type { LiveEvent } from '@hub/shared/queues';
 import { buildApi } from './app';
-import type { ApiConfig, ApiDeps, GoogleIdentity } from './deps';
+import type { ApiConfig, ApiDeps, GoogleIdentity, OAuthStore } from './deps';
 
 export const TEST_CONFIG: ApiConfig = {
   production: false,
@@ -23,9 +23,34 @@ export const TEST_CONFIG: ApiConfig = {
 export const rawAccess = (mailbox: string) => `ya29.RAWACCESS-${mailbox}`;
 export const rawRefresh = (mailbox: string) => `1//RAWREFRESH-${mailbox}`;
 
+/** In-memory OAuthStore with the same NX / GETDEL semantics as Redis; TTLs follow `now`. */
+export function memoryOAuthStore(now: () => Date) {
+  const entries = new Map<string, { value: string; expiresAt: number }>();
+  const live = (key: string) => {
+    const e = entries.get(key);
+    if (e && e.expiresAt <= now().getTime()) entries.delete(key);
+    return entries.get(key);
+  };
+  const store: OAuthStore = {
+    setNx: async (key, value, ttlSeconds) => {
+      if (live(key)) return false;
+      entries.set(key, { value, expiresAt: now().getTime() + ttlSeconds * 1000 });
+      return true;
+    },
+    take: async (key) => {
+      const e = live(key);
+      entries.delete(key);
+      return e?.value ?? null;
+    },
+  };
+  return { store, entries };
+}
+
 export function fakeGmailConnector() {
   const revoked: string[] = [];
   const exchanged: string[] = [];
+  /** The `access` each exchange was called with (the connector's scope check keys off it). */
+  const exchangedAccess: (string | undefined)[] = [];
   const connector = {
     provider: 'gmail',
     connect: {
@@ -37,10 +62,11 @@ export function fakeGmailConnector() {
         if (loginHint) u.searchParams.set('login_hint', loginHint);
         return u.toString();
       },
-      exchange: async ({ code }) => {
+      exchange: async ({ code, access }) => {
         if (!code.startsWith('fake:')) throw new Error('bad code');
         const mailbox = code.slice(5);
         exchanged.push(mailbox);
+        exchangedAccess.push(access);
         return {
           tokens: { accessToken: rawAccess(mailbox), refreshToken: rawRefresh(mailbox) },
           externalId: mailbox,
@@ -58,7 +84,7 @@ export function fakeGmailConnector() {
     backfill: async () => ({ records: [], nextPageToken: null }),
     normalize: () => null,
   } satisfies Connector;
-  return { connector, revoked, exchanged };
+  return { connector, revoked, exchanged, exchangedAccess };
 }
 
 export type Job = { name: string; data: unknown; opts?: { jobId?: string } };
@@ -75,6 +101,7 @@ export async function setup(overrides: Partial<ApiDeps> = {}) {
   let answer = 'Answer [1]';
   let clock = new Date('2026-09-28T10:00:00.000Z');
   const google = new Map<string, GoogleIdentity>();
+  const oauth = memoryOAuthStore(() => clock);
 
   const deps: ApiDeps = {
     db: t.db,
@@ -96,6 +123,7 @@ export async function setup(overrides: Partial<ApiDeps> = {}) {
       return () => set.delete(cb);
     },
     getConnector: (p) => (p === 'gmail' ? gmail.connector : undefined),
+    oauthStore: oauth.store,
     router: {
       generate: async (req): Promise<RouteResult> => {
         routerCalls.push(req);
@@ -133,23 +161,48 @@ export async function setup(overrides: Partial<ApiDeps> = {}) {
     };
   }
 
-  /** Runs the full connect → consent → callback flow with the fake connector. */
-  async function connectGmail(token: string, mailbox: string) {
+  /** POST /accounts/:provider/connect (or /accounts/:id/write-access) and returns the state. */
+  async function startConnect(token: string, url = '/accounts/gmail/connect', payload = {}) {
     const res = await app.inject({
       method: 'POST',
-      url: '/accounts/gmail/connect',
+      url,
       headers: { authorization: `Bearer ${token}` },
-      payload: {},
+      payload,
     });
     if (res.statusCode !== 200) throw new Error(`connect failed: ${res.body}`);
-    const state = new URL((res.json() as { url: string }).url).searchParams.get('state')!;
-    const cb = await app.inject({
+    return new URL((res.json() as { url: string }).url).searchParams.get('state')!;
+  }
+
+  /** The provider redirecting the browser back; returns the response and its pending id. */
+  async function callback(state: string, code: string) {
+    const res = await app.inject({
       method: 'GET',
-      url: `/oauth/google/callback?state=${encodeURIComponent(state)}&code=${encodeURIComponent(`fake:${mailbox}`)}`,
+      url: `/oauth/google/callback?state=${encodeURIComponent(state)}&code=${encodeURIComponent(code)}`,
     });
-    const location = String(cb.headers.location ?? '');
-    const accountId = new URL(location).searchParams.get('accountId');
-    return { res: cb, location, accountId: accountId! };
+    const location = String(res.headers.location ?? '');
+    const pending = location ? new URL(location).searchParams.get('pending') : null;
+    return { res, location, pending };
+  }
+
+  /** The app finishing the flow with its own session. */
+  function complete(token: string, pending: string) {
+    return app.inject({
+      method: 'POST',
+      url: '/accounts/complete',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { pending },
+    });
+  }
+
+  /** Runs the full connect → consent → callback → complete flow with the fake connector. */
+  async function connectGmail(token: string, mailbox: string) {
+    const state = await startConnect(token);
+    const cb = await callback(state, `fake:${mailbox}`);
+    if (!cb.pending) throw new Error(`callback failed: ${cb.location || cb.res.body}`);
+    const done = await complete(token, cb.pending);
+    if (done.statusCode !== 200) throw new Error(`complete failed: ${done.body}`);
+    const accountId = (done.json() as { account: { id: string } }).account.id;
+    return { res: cb.res, location: cb.location, pending: cb.pending, complete: done, accountId };
   }
 
   return {
@@ -163,7 +216,11 @@ export async function setup(overrides: Partial<ApiDeps> = {}) {
     gmail,
     google,
     routerCalls,
+    oauth,
     signIn,
+    startConnect,
+    callback,
+    complete,
     connectGmail,
     setAnswer: (a: string) => (answer = a),
     setNow: (d: Date) => (clock = d),

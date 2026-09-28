@@ -27,6 +27,12 @@ export function isAcceptableRedirectUri(uri: string): boolean {
   return /^[a-z][a-z0-9+.-]*:$/.test(u.protocol);
 }
 
+/**
+ * Key in mcp_oauth_clients.metadata where refresh-token state is kept per mcp_clients row
+ * (see tokens.ts). Server-side only: never part of the client information.
+ */
+export const REFRESH_STATE_KEY = 'hubRefresh';
+
 export type StoredClient = OAuthClientInformationFull & { secretHash: string | null };
 
 /** Dynamic client registration store. Secrets are kept as SHA-256 hashes only. */
@@ -48,7 +54,10 @@ export class HubClientsStore implements OAuthRegisteredClientsStore {
       .from(mcpOauthClients)
       .where(eq(mcpOauthClients.clientId, clientId));
     if (!row) return undefined;
-    const meta = (row.metadata ?? {}) as Record<string, unknown>;
+    const { [REFRESH_STATE_KEY]: _refreshState, ...meta } = (row.metadata ?? {}) as Record<
+      string,
+      unknown
+    >;
     return {
       ...(meta as Partial<OAuthClientInformationFull>),
       client_id: row.clientId,
@@ -81,7 +90,13 @@ export class HubClientsStore implements OAuthRegisteredClientsStore {
     }
     const name = (client.client_name ?? '').trim().slice(0, 80) || 'MCP client';
     const { client_secret, ...rest } = client;
-    const metadata = { ...rest, client_name: name, grant_types: grantTypes };
+    const metadata: Record<string, unknown> = {
+      ...rest,
+      client_name: name,
+      grant_types: grantTypes,
+    };
+    // A client never gets to seed server-side state.
+    delete metadata[REFRESH_STATE_KEY];
     await this.db.insert(mcpOauthClients).values({
       clientId: client.client_id,
       clientSecretHash: client_secret ? hashToken(client_secret) : null,

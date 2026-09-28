@@ -1,6 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { accounts, auditLog, items, policies, secrets } from '@hub/db';
+import { createGmailConnector, FakeGmailStore } from '@hub/connectors/gmail';
 import { strictPersonalPolicies } from '@hub/policy';
 import { setup, rawAccess, rawRefresh, type TestEnv } from './test-helpers';
 
@@ -66,7 +67,13 @@ describe('OAuth connect', () => {
     const { token, userId, auth } = await env.signIn('two@example.com');
     const work = await env.connectGmail(token, 'me@company.com');
     expect(work.res.statusCode).toBe(302);
-    expect(work.location).toBe(`hub://connected?accountId=${work.accountId}`);
+    expect(work.location).toBe(`hub://connected?pending=${work.pending}`);
+    expect(work.complete.json()).toMatchObject({
+      access: 'read',
+      account: { id: work.accountId, externalId: 'me@company.com' },
+    });
+    // The connector's scope check runs: exchange is told which access was asked for.
+    expect(env.gmail.exchangedAccess.at(-1)).toBe('read');
     const personal = await env.connectGmail(token, 'me@gmail.com');
     expect(personal.accountId).not.toBe(work.accountId);
 
@@ -210,17 +217,23 @@ describe('OAuth connect', () => {
     const url = new URL(res.json().url);
     expect(url.searchParams.get('access')).toBe('write');
     expect(url.searchParams.get('login_hint')).toBe('write@company.com');
-    const state = url.searchParams.get('state')!;
 
-    const wrong = await env.app.inject({
-      url: `/oauth/google/callback?state=${state}&code=fake:other@company.com`,
-    });
-    expect(wrong.headers.location).toContain('error=account_mismatch');
+    const writeFlow = async (mailbox: string) => {
+      const state = await env.startConnect(token, `/accounts/${accountId}/write-access`);
+      const cb = await env.callback(state, `fake:${mailbox}`);
+      return env.complete(token, cb.pending!);
+    };
 
-    const ok = await env.app.inject({
-      url: `/oauth/google/callback?state=${state}&code=fake:write@company.com`,
-    });
-    expect(ok.headers.location).toBe(`hub://connected?accountId=${accountId}`);
+    const wrong = await writeFlow('other@company.com');
+    expect(wrong.statusCode).toBe(409);
+    expect(wrong.json().error).toBe('account_mismatch');
+    const [before] = await env.t.db.select().from(accounts).where(eq(accounts.id, accountId));
+    expect(before!.writeTokenRef).toBeNull();
+
+    const ok = await writeFlow('write@company.com');
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json()).toMatchObject({ access: 'write', account: { id: accountId } });
+    expect(env.gmail.exchangedAccess.at(-1)).toBe('write');
     const [row] = await env.t.db.select().from(accounts).where(eq(accounts.id, accountId));
     expect(row!.writeTokenRef).toBeTruthy();
     expect(row!.writeTokenRef).not.toBe(row!.tokenRef);
@@ -229,6 +242,160 @@ describe('OAuth connect', () => {
       .from(secrets)
       .where(eq(secrets.id, row!.writeTokenRef!));
     expect(secret!.kind).toBe('oauth:gmail:write');
+  });
+});
+
+describe('connect is bound to the user who started it (M1)', () => {
+  const accountsOf = (userId: string) =>
+    env.t.db.select().from(accounts).where(eq(accounts.userId, userId));
+  const secretsOf = (userId: string) =>
+    env.t.db.select().from(secrets).where(eq(secrets.userId, userId));
+  const auditsOf = (userId: string, action: string) =>
+    env.t.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.userId, userId), eq(auditLog.action, action)));
+
+  it('the callback creates nothing; the account appears only after /accounts/complete', async () => {
+    const { token, userId } = await env.signIn('lazy@example.com');
+    const state = await env.startConnect(token);
+    const cb = await env.callback(state, 'fake:lazy@company.com');
+    expect(cb.res.statusCode).toBe(302);
+    expect(cb.location).toBe(`hub://connected?pending=${cb.pending}`);
+    expect(cb.pending!.length).toBeGreaterThanOrEqual(16);
+
+    expect(env.gmail.exchanged).not.toContain('lazy@company.com');
+    expect(await accountsOf(userId)).toHaveLength(0);
+    expect(await secretsOf(userId)).toHaveLength(0);
+    expect(await auditsOf(userId, 'account.connected')).toHaveLength(0);
+    // The code is sealed at rest, and the pending id is not the key.
+    const stored = [...env.oauth.entries.entries()].map(([k, v]) => k + v.value).join('\n');
+    expect(stored).not.toContain('lazy@company.com');
+    expect(stored).not.toContain(cb.pending!);
+
+    const done = await env.complete(token, cb.pending!);
+    expect(done.statusCode).toBe(200);
+    expect(await accountsOf(userId)).toHaveLength(1);
+    expect(await auditsOf(userId, 'account.connected')).toHaveLength(1);
+  });
+
+  it('complete requires a session', async () => {
+    const res = await env.app.inject({
+      method: 'POST',
+      url: '/accounts/complete',
+      payload: { pending: 'x'.repeat(43) },
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("a flow started by an attacker and approved by a victim attaches nobody's mailbox", async () => {
+    const attacker = await env.signIn('attacker@example.com');
+    const victim = await env.signIn('victim@example.com');
+    // The attacker starts a connect and sends the consent URL to the victim, who approves.
+    const state = await env.startConnect(attacker.token);
+    const cb = await env.callback(state, 'fake:victim@company.com');
+    expect(cb.pending).toBeTruthy();
+
+    // The victim's app finishes the flow with the victim's session.
+    const res = await env.complete(victim.token, cb.pending!);
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error).toBe('connect_user_mismatch');
+    // The pending entry is gone: the attacker can't pick it up either.
+    const again = await env.complete(attacker.token, cb.pending!);
+    expect(again.statusCode).toBe(400);
+
+    expect(env.gmail.exchanged).not.toContain('victim@company.com');
+    for (const u of [attacker, victim]) {
+      expect(await accountsOf(u.userId)).toHaveLength(0);
+      expect(await secretsOf(u.userId)).toHaveLength(0);
+      expect(await auditsOf(u.userId, 'account.connect_user_mismatch')).toHaveLength(1);
+    }
+  });
+
+  it('a state is single-use: replaying it is rejected, whatever the first outcome', async () => {
+    const { token, userId } = await env.signIn('replay@example.com');
+    const state = await env.startConnect(token);
+    const first = await env.callback(state, 'fake:replay@company.com');
+    expect(first.pending).toBeTruthy();
+    const replay = await env.callback(state, 'fake:replay@company.com');
+    expect(replay.res.statusCode).toBe(400);
+    expect(replay.res.json().error).toBe('invalid_state');
+    expect(replay.pending).toBeNull();
+
+    // A denied consent spends the state too.
+    const denied = await env.startConnect(token);
+    const d1 = await env.app.inject({
+      url: `/oauth/google/callback?state=${denied}&error=access_denied`,
+    });
+    expect(d1.statusCode).toBe(302);
+    const d2 = await env.callback(denied, 'fake:replay@company.com');
+    expect(d2.res.statusCode).toBe(400);
+
+    expect(await accountsOf(userId)).toHaveLength(0);
+  });
+
+  it('a pending id is single-use and expires after 10 minutes', async () => {
+    const { token, userId } = await env.signIn('pending@example.com');
+    const a = await env.callback(await env.startConnect(token), 'fake:pending-a@company.com');
+    expect((await env.complete(token, a.pending!)).statusCode).toBe(200);
+    const reused = await env.complete(token, a.pending!);
+    expect(reused.statusCode).toBe(400);
+    expect(reused.json().error).toBe('connect_expired');
+
+    const b = await env.callback(await env.startConnect(token), 'fake:pending-b@company.com');
+    const start = env.now();
+    env.setNow(new Date(start.getTime() + 11 * 60 * 1000));
+    try {
+      const late = await env.complete(token, b.pending!);
+      expect(late.statusCode).toBe(400);
+      expect(late.json().error).toBe('connect_expired');
+    } finally {
+      env.setNow(start);
+    }
+
+    const unknown = await env.complete(token, 'A'.repeat(43));
+    expect(unknown.statusCode).toBe(400);
+    const rows = await accountsOf(userId);
+    expect(rows.map((r) => r.externalId)).toEqual(['pending-a@company.com']);
+    expect(env.gmail.exchanged).not.toContain('pending-b@company.com');
+  });
+});
+
+describe('read-only scope check (M2)', () => {
+  it('a read flow that gets a write-scope grant is rejected with missing_scope; no token stored', async () => {
+    // The real Gmail connector in fake mode, so its own checkScopes runs.
+    const store = FakeGmailStore.memory();
+    const gmail = createGmailConnector({ config: { fake: true }, fakeStore: store });
+    const scoped = await setup({ getConnector: (p) => (p === 'gmail' ? gmail : undefined) });
+    try {
+      const { token, userId } = await scoped.signIn('scope@example.com');
+      const mailbox = store.emails()[0]!;
+      const run = async (code: string) => {
+        const cb = await scoped.callback(await scoped.startConnect(token), code);
+        return scoped.complete(token, cb.pending!);
+      };
+
+      // The consent screen handed back gmail.send instead of gmail.readonly.
+      const bad = await run(`fake-write:${mailbox}`);
+      expect(bad.statusCode).toBe(400);
+      expect(bad.json().error).toBe('missing_scope');
+      expect(await scoped.t.db.select().from(accounts)).toHaveLength(0);
+      expect(
+        await scoped.t.db.select().from(secrets).where(eq(secrets.userId, userId)),
+      ).toHaveLength(0);
+      const failed = await scoped.t.db
+        .select()
+        .from(auditLog)
+        .where(and(eq(auditLog.userId, userId), eq(auditLog.action, 'account.connect_failed')));
+      expect(failed.map((a) => (a.details as { error: string }).error)).toEqual(['missing_scope']);
+
+      // A proper read-only grant still connects.
+      const ok = await run(`fake:${mailbox}`);
+      expect(ok.statusCode).toBe(200);
+      expect(ok.json().account.externalId).toBe(mailbox);
+    } finally {
+      await scoped.close();
+    }
   });
 });
 

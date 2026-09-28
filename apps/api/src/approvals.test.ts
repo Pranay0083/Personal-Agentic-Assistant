@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -11,6 +12,7 @@ import {
   users,
 } from '@hub/db';
 import { can, decide, loadContext } from '@hub/policy';
+import { hashToken } from '@hub/server';
 import { setup, type TestEnv } from './test-helpers';
 
 let env: TestEnv;
@@ -152,6 +154,31 @@ describe('proposals', () => {
   });
 });
 
+/** An mcp_connect row as apps/mcp writes it: only the salted hash of the pairing code. */
+async function connectRequest(code: string, createdAt = env.now()) {
+  const id = randomUUID();
+  const [row] = await env.t.db
+    .insert(accessRequests)
+    .values({
+      id,
+      userId,
+      kind: 'mcp_connect',
+      principal: 'mcp:pending',
+      clientName: 'Claude Code',
+      resource: '*',
+      meta: { redirectHost: '127.0.0.1:33418', pairingCodeHash: hashToken(`${id}:${code}`) },
+      createdAt,
+    })
+    .returning();
+  return row!;
+}
+
+const allowConnect = (id: string, payload: object = {}) =>
+  env.app.inject({ method: 'POST', url: `/access-requests/${id}/allow`, headers: auth, payload });
+
+const requestRow = async (id: string) =>
+  (await env.t.db.select().from(accessRequests).where(eq(accessRequests.id, id)))[0]!;
+
 describe('access requests', () => {
   let clientId: string;
   beforeAll(async () => {
@@ -256,29 +283,19 @@ describe('access requests', () => {
   });
 
   it('mcp_connect only marks the request allowed; deny marks denied', async () => {
-    const [connect] = await env.t.db
-      .insert(accessRequests)
-      .values({
-        userId,
-        kind: 'mcp_connect',
-        principal: 'mcp:pending',
-        clientName: 'Cursor',
-        resource: '*',
-      })
-      .returning();
+    const connect = await connectRequest('482913');
     const before = (await env.t.db.select().from(grants)).length;
-    const res = await env.app.inject({
-      method: 'POST',
-      url: `/access-requests/${connect!.id}/allow`,
-      headers: auth,
-    });
+    const res = await allowConnect(connect.id, { pairingCode: '482 913' });
+    expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ grant: null });
     expect((await env.t.db.select().from(grants)).length).toBe(before);
     const [row] = await env.t.db
       .select()
       .from(accessRequests)
-      .where(eq(accessRequests.id, connect!.id));
+      .where(eq(accessRequests.id, connect.id));
     expect(row!.status).toBe('allowed');
+    // The MCP server only issues a code when the API recorded the verified pairing.
+    expect(row!.meta).toMatchObject({ pairingVerifiedAt: env.now().toISOString() });
 
     const [other] = await env.t.db
       .insert(accessRequests)
@@ -300,6 +317,117 @@ describe('access requests', () => {
       .from(auditLog)
       .where(eq(auditLog.action, 'access_request.denied'));
     expect(audits).toHaveLength(1);
+  });
+});
+
+describe('mcp_connect pairing code', () => {
+  it('refuses an allow without a code or with a wrong one', async () => {
+    const req = await connectRequest('314159');
+    const none = await allowConnect(req.id);
+    expect(none.statusCode).toBe(400);
+    expect(none.json().error).toBe('pairing_code_required');
+
+    const wrong = await allowConnect(req.id, { pairingCode: '000000' });
+    expect(wrong.statusCode).toBe(403);
+    expect(wrong.json().error).toBe('wrong_pairing_code');
+
+    const row = await requestRow(req.id);
+    expect(row.status).toBe('pending');
+    expect(row.meta).toMatchObject({ pairingAttempts: 1 });
+    expect(row.meta).not.toHaveProperty('pairingVerifiedAt');
+    // The code itself is never stored, and the serializer doesn't expose the hash.
+    expect(JSON.stringify(row.meta)).not.toContain('314159');
+    const listed = (await env.app.inject({ url: '/access-requests', headers: auth }))
+      .json()
+      .requests.find((r: { id: string }) => r.id === req.id);
+    expect(listed).toMatchObject({ kind: 'mcp_connect', clientNameVerified: false });
+    expect(JSON.stringify(listed)).not.toContain('pairing');
+
+    // A pairing code for another request doesn't work here (the id salts the hash).
+    const other = await connectRequest('271828');
+    expect((await allowConnect(req.id, { pairingCode: '271828' })).statusCode).toBe(403);
+
+    // The right code still works while attempts remain.
+    const ok = await allowConnect(req.id, { pairingCode: '314159' });
+    expect(ok.statusCode).toBe(200);
+    expect((await requestRow(req.id)).status).toBe('allowed');
+    expect((await requestRow(other.id)).status).toBe('pending');
+  });
+
+  it('denies the request after five wrong codes', async () => {
+    const req = await connectRequest('161803');
+    const codes: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      const r = await allowConnect(req.id, { pairingCode: `99999${i}` });
+      expect(r.statusCode).toBe(403);
+      codes.push(r.json().error);
+    }
+    expect(codes).toEqual(Array(4).fill('wrong_pairing_code'));
+    const fifth = await allowConnect(req.id, { pairingCode: '999995' });
+    expect(fifth.statusCode).toBe(403);
+    expect(fifth.json().error).toBe('pairing_locked');
+    const row = await requestRow(req.id);
+    expect(row.status).toBe('denied');
+    expect(row.decidedAt).not.toBeNull();
+    expect(row.meta).toMatchObject({ pairingAttempts: 5 });
+
+    // Locked: even the right code is refused now.
+    const late = await allowConnect(req.id, { pairingCode: '161803' });
+    expect(late.statusCode).toBe(409);
+    expect((await requestRow(req.id)).status).toBe('denied');
+    const denied = await env.t.db
+      .select()
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.action, 'access_request.denied'),
+          eq(auditLog.target, `access_request:${req.id}`),
+        ),
+      );
+    expect(denied).toHaveLength(1);
+    expect(denied[0]!.details).toMatchObject({ reason: 'pairing_code' });
+  });
+
+  it('counts concurrent wrong guesses atomically', async () => {
+    const req = await connectRequest('112358');
+    const results = await Promise.all(
+      Array.from({ length: 7 }, (_, i) => allowConnect(req.id, { pairingCode: `00000${i}` })),
+    );
+    const errors = results.map((r) => r.json().error).sort();
+    // Five attempts count (the fifth locks); the rest find it already decided.
+    expect(errors.filter((e) => e === 'pairing_locked')).toHaveLength(1);
+    expect(errors.filter((e) => e === 'wrong_pairing_code')).toHaveLength(4);
+    expect(errors.filter((e) => e === 'not_pending')).toHaveLength(2);
+    expect((await requestRow(req.id)).status).toBe('denied');
+  });
+
+  it('refuses a request older than the connect TTL, even with the right code', async () => {
+    const stale = await connectRequest('141421', new Date(env.now().getTime() - 10 * 60_000));
+    const res = await allowConnect(stale.id, { pairingCode: '141421' });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe('expired');
+    expect((await requestRow(stale.id)).status).toBe('expired');
+
+    // Just inside the TTL is fine.
+    const fresh = await connectRequest('173205', new Date(env.now().getTime() - 9 * 60_000));
+    expect((await allowConnect(fresh.id, { pairingCode: '173205' })).statusCode).toBe(200);
+  });
+
+  it('refuses a connect request that has no pairing code on file', async () => {
+    const [legacy] = await env.t.db
+      .insert(accessRequests)
+      .values({
+        userId,
+        kind: 'mcp_connect',
+        principal: 'mcp:pending',
+        clientName: 'Cursor',
+        resource: '*',
+        createdAt: env.now(),
+      })
+      .returning();
+    const res = await allowConnect(legacy!.id, { pairingCode: '123456' });
+    expect(res.statusCode).toBe(409);
+    expect((await requestRow(legacy!.id)).status).toBe('pending');
   });
 });
 

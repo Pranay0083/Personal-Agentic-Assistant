@@ -1,16 +1,18 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   accessRequests,
+  auditLog,
   grants,
   items,
   mcpClients,
   proposals,
+  pushTokens,
   sessions,
   tasks,
   users,
 } from '@hub/db';
-import { hashToken } from '@hub/server';
+import { hashToken, type Logger } from '@hub/server';
 import { buildApi } from './app';
 import { setup, TEST_CONFIG, type TestEnv } from './test-helpers';
 
@@ -71,6 +73,53 @@ describe('auth', () => {
     const res = await env.app.inject({ method: 'POST', url: '/auth/sign-out', headers: auth });
     expect(res.statusCode).toBe(204);
     expect((await env.app.inject({ url: '/me', headers: auth })).statusCode).toBe(401);
+  });
+
+  it("sign-out unregisters the device's push token, and only this user's", async () => {
+    const a = await env.signIn('out-push@example.com');
+    const tokensOf = (userId: string) =>
+      env.t.db.select().from(pushTokens).where(eq(pushTokens.userId, userId));
+    const register = (auth: Record<string, string>, token: string) =>
+      env.app.inject({
+        method: 'POST',
+        url: '/me/push-tokens',
+        headers: auth,
+        payload: { token, platform: 'ios' },
+      });
+    await register(a.auth, 'ExponentPushToken[out-1]');
+    await register(a.auth, 'ExponentPushToken[out-2]');
+    const b = await env.signIn('out-push-other@example.com');
+    await register(b.auth, 'ExponentPushToken[out-b]');
+
+    // Another user's token in the body is ignored.
+    const res = await env.app.inject({
+      method: 'POST',
+      url: '/auth/sign-out',
+      headers: a.auth,
+      payload: { pushToken: 'ExponentPushToken[out-1]' },
+    });
+    expect(res.statusCode).toBe(204);
+    expect((await tokensOf(a.userId)).map((t) => t.token)).toEqual(['ExponentPushToken[out-2]']);
+
+    const b2 = await env.signIn('out-push-other@example.com');
+    await env.app.inject({
+      method: 'POST',
+      url: '/auth/sign-out',
+      headers: b2.auth,
+      payload: { pushToken: 'ExponentPushToken[out-2]' },
+    });
+    expect(await tokensOf(a.userId)).toHaveLength(1);
+    expect(await tokensOf(b.userId)).toHaveLength(1);
+
+    // A malformed body still signs out.
+    const bad = await env.app.inject({
+      method: 'POST',
+      url: '/auth/sign-out',
+      headers: b.auth,
+      payload: { pushToken: 42 },
+    });
+    expect(bad.statusCode).toBe(204);
+    expect((await env.app.inject({ url: '/me', headers: b.auth })).statusCode).toBe(401);
   });
 
   it('healthz is public', async () => {
@@ -177,6 +226,74 @@ describe('me', () => {
       });
       expect(res.statusCode).toBe(204);
     }
+  });
+
+  it('registering a token removes it from any other user, and audits that', async () => {
+    const a = await env.signIn('device-a@example.com');
+    const b = await env.signIn('device-b@example.com');
+    const token = 'ExponentPushToken[shared-device]';
+    const register = (auth: Record<string, string>) =>
+      env.app.inject({
+        method: 'POST',
+        url: '/me/push-tokens',
+        headers: auth,
+        payload: { token, platform: 'android' },
+      });
+    expect((await register(a.auth)).statusCode).toBe(204);
+    expect((await register(b.auth)).statusCode).toBe(204);
+
+    const rows = await env.t.db.select().from(pushTokens).where(eq(pushTokens.token, token));
+    expect(rows.map((r) => r.userId)).toEqual([b.userId]);
+    const audits = (userId: string, action: string) =>
+      env.t.db
+        .select()
+        .from(auditLog)
+        .where(and(eq(auditLog.userId, userId), eq(auditLog.action, action)));
+    expect(await audits(a.userId, 'push_token.removed')).toHaveLength(1);
+    expect(await audits(b.userId, 'push_token.reassigned')).toHaveLength(1);
+    expect(JSON.stringify(await env.t.db.select().from(auditLog))).not.toContain('shared-device');
+
+    // Re-registering your own token is not a reassignment.
+    await register(b.auth);
+    expect(await audits(b.userId, 'push_token.reassigned')).toHaveLength(1);
+  });
+});
+
+describe('error logging (L1)', () => {
+  it('500s log the error name, driver code and route, never the message or query params', async () => {
+    const lines: string[] = [];
+    const write = (...args: unknown[]) => void lines.push(JSON.stringify(args));
+    const l: Record<string, unknown> = { level: 'trace', silent: () => {} };
+    for (const m of ['info', 'error', 'debug', 'fatal', 'warn', 'trace']) l[m] = write;
+    l.child = () => l;
+    const app = await buildApi({ ...env.deps, logger: l as unknown as Logger });
+    // Shaped like drizzle-orm's DrizzleQueryError: the message embeds the params.
+    app.get('/boom', async () => {
+      const cause = Object.assign(new Error('duplicate key value'), { code: '23505' });
+      const err = new Error(
+        'Failed query: insert into "items" ("body") values ($1)\nparams: SECRET-EMAIL-BODY',
+        { cause },
+      );
+      err.name = 'DrizzleQueryError';
+      throw err;
+    });
+    const { auth } = await env.signIn('boom@example.com');
+    const res = await app.inject({ url: '/boom', headers: auth });
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toEqual({ error: 'internal', message: 'internal error' });
+    await app.close();
+
+    const errorLine = lines.find((x) => x.includes('DrizzleQueryError'));
+    expect(errorLine).toBeDefined();
+    expect(JSON.parse(errorLine!)[0]).toEqual({
+      err: { name: 'DrizzleQueryError', code: '23505' },
+      method: 'GET',
+      route: '/boom',
+    });
+    const all = lines.join('\n');
+    expect(all).not.toContain('SECRET-EMAIL-BODY');
+    expect(all).not.toContain('Failed query');
+    expect(all).not.toContain('duplicate key');
   });
 });
 

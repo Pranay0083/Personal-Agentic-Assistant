@@ -161,7 +161,12 @@ export const ApproveProposalReq = z.object({
 export const AccessRequestsRes = z.object({ requests: z.array(AccessRequest) });
 // POST /access-requests/:id/allow { durationMinutes } -> { grant: Grant | null }
 export const AllowAccessReq = z.object({
-  durationMinutes: z.number().int().min(5).max(24 * 60).default(60),
+  durationMinutes: z
+    .number()
+    .int()
+    .min(5)
+    .max(24 * 60)
+    .default(60),
   /**
    * Required for kind `mcp_connect`: the pairing code shown on the computer's consent page.
    * Proves the person tapping Allow is looking at that page, not a phishing copy of it.

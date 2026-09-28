@@ -31,7 +31,10 @@ export const ProjectInput = {
 
 type TaskFilter = { status?: string[]; project?: string; limit: number; doneSince?: Date };
 
-/** Tasks whose source account the client can read; tasks with no account are the user's own. */
+/**
+ * Tasks whose source account the client can read. Tasks with no account are shown only if
+ * the user wrote them; orphaned agent tasks are withheld.
+ */
 async function readableTasks(env: ToolEnv, cache: PolicyCache, f: TaskFilter) {
   const conds: SQL[] = [eq(tasks.userId, env.principal.userId)];
   if (f.status) conds.push(inArray(tasks.status, f.status));
@@ -72,6 +75,13 @@ async function readableTasks(env: ToolEnv, cache: PolicyCache, f: TaskFilter) {
   const visible: typeof rows = [];
   let withheld = 0;
   for (const t of rows) {
+    // An agent-created task whose account was deleted (account_id and source_item_id set
+    // NULL) can no longer be checked against its source's policy, so withhold it. Only
+    // tasks the user wrote themselves are account-free by nature.
+    if (!t.accountId && t.createdBy.startsWith('agent:')) {
+      withheld++;
+      continue;
+    }
     const checks: [string, string][] = [];
     if (t.accountId) {
       const resource = t.itemKind ? resourceFor(t.itemKind) : PROVIDER_PRIMARY[t.provider ?? ''];

@@ -73,8 +73,19 @@ export function oauthClient(config: GmailConfig, redirectUri?: string) {
   });
 }
 
+/**
+ * Per-request timeout for Gmail API calls. Without one a hung connection blocks a worker
+ * (and, for sends, the executor's advisory lock) indefinitely. A timed-out send is an
+ * *ambiguous* failure: the executor reconciles with findExecuted instead of re-sending.
+ */
+export const GMAIL_REQUEST_TIMEOUT_MS = 30_000;
+
 /** Real Gmail client on @googleapis/gmail with an OAuth2Client that auto-refreshes. */
-export function realClientFactory(config: GmailConfig): GmailClientFactory {
+export function realClientFactory(
+  config: GmailConfig,
+  opts: { timeoutMs?: number } = {},
+): GmailClientFactory {
+  const timeout = opts.timeoutMs ?? GMAIL_REQUEST_TIMEOUT_MS;
   return ({ tokens, onTokens }) => {
     const auth = oauthClient(config);
     auth.setCredentials(toCredentials(tokens));
@@ -83,6 +94,7 @@ export function realClientFactory(config: GmailConfig): GmailClientFactory {
       version: 'v1',
       auth,
       retry: false,
+      timeout,
       ...(config.rootUrl ? { rootUrl: config.rootUrl } : {}),
     });
     const u = api.users;
@@ -160,8 +172,15 @@ const NETWORK_CODES = new Set([
   'ECONNRESET',
   'ETIMEDOUT',
   'ECONNREFUSED',
+  'ECONNABORTED',
   'EAI_AGAIN',
   'ENOTFOUND',
+  'EPIPE',
+  'UND_ERR_SOCKET',
+  'UND_ERR_CONNECT_TIMEOUT',
+  // gaxios reports AbortSignal.timeout() as code `TimeoutError` (the DOMException name).
+  'TimeoutError',
+  'AbortError',
 ]);
 
 export function httpStatusOf(e: unknown): number | undefined {
@@ -187,8 +206,18 @@ export function mapGmailError(e: unknown): unknown {
       ...(retryAfterMs !== undefined ? { retryAfterMs } : {}),
     });
   }
-  const code = (e as { code?: unknown } | null)?.code;
-  if (typeof code === 'string' && NETWORK_CODES.has(code)) {
+  // gaxios puts the system code on `code`, or leaves it on `cause` (a timeout surfaces as a
+  // GaxiosError whose cause is an AbortError/TimeoutError).
+  const err = e as {
+    code?: unknown;
+    name?: unknown;
+    cause?: { code?: unknown; name?: unknown };
+  } | null;
+  const code = [err?.code, err?.cause?.code, err?.name, err?.cause?.name].find(
+    (c): c is string => typeof c === 'string' && NETWORK_CODES.has(c),
+  );
+  if (code) {
+    // No HTTP status: the request may or may not have reached Gmail.
     return new RetryableError('gmail', `network error ${code}`);
   }
   if (status !== undefined) {

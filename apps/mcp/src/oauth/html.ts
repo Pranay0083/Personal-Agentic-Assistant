@@ -32,6 +32,8 @@ button{width:100%;min-height:48px;margin-top:16px;border:0;border-radius:12px;ba
 .warn .dot{animation:none}
 @keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
 small{color:var(--muted)}
+.pair{text-align:center}
+.code{font-family:'IBM Plex Mono',monospace;font-size:40px;font-weight:600;letter-spacing:.12em;color:var(--ink);margin:8px 0 4px;white-space:nowrap}
 `;
 
 const FONTS =

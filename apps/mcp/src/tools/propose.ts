@@ -186,7 +186,7 @@ export async function proposeAction(env: ToolEnv, args: ProposeArgs): Promise<Ca
       userId: env.principal.userId,
       kind: 'approval',
       title: 'Approval needed',
-      body: `${env.clientName} drafted ${args.action === 'gmail.send' ? 'an email' : 'an action'} for you to review.`,
+      body: 'An agent drafted an action for you to review.',
       data: { proposalId: proposal.id },
       dedupeKey: `approval:${proposal.id}`,
     };

@@ -1,21 +1,28 @@
 import { and, asc, eq, ne } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import type { Connector, OAuthTokens } from '@hub/connectors';
+import { MissingScopeError, type Connector, type OAuthTokens } from '@hub/connectors';
 import { accounts, users, type Db } from '@hub/db';
 import { ACCOUNT_COLORS, AccountFilters, Provider, type Account } from '@hub/shared';
-import { ConnectReq, UpdateAccountReq } from '@hub/shared/api';
-
-type ConnectRes = { url: string };
+import {
+  CompleteConnectReq,
+  ConnectReq,
+  UpdateAccountReq,
+  type CompleteConnectRes,
+} from '@hub/shared/api';
+import { requestWriteTokenRevocation } from '@hub/server';
 import { QUEUES } from '@hub/shared/queues';
 import { z } from 'zod';
 import type { Ctx } from '../context';
-import { badRequest, HttpError, idParam, parse } from '../http';
+import { badRequest, errorFields, HttpError, idParam, parse } from '../http';
 import {
   CALLBACK_NAME,
   callbackUrl,
   checkAppRedirect,
+  claimStateNonce,
   defaultAppRedirect,
+  putPending,
   signState,
+  takePending,
   verifyState,
   withQuery,
   type OAuthState,
@@ -25,6 +32,27 @@ import { applyStrictPolicies, syncStrictPolicies } from '../strict';
 import { sentKeys } from './me';
 
 type AccountRow = typeof accounts.$inferSelect;
+type ConnectRes = { url: string };
+
+/** Errors POST /accounts/complete can return, with their HTTP status. */
+const CONNECT_ERROR_STATUS = {
+  missing_scope: 400,
+  exchange_failed: 502,
+  invalid_state: 400,
+  account_not_found: 404,
+  account_mismatch: 409,
+  already_connected: 409,
+} as const;
+type ConnectErrorCode = keyof typeof CONNECT_ERROR_STATUS;
+
+async function auditConnectFailed(ctx: Ctx, state: OAuthState, error: string) {
+  await ctx.audit({
+    userId: state.userId,
+    principal: 'user',
+    action: 'account.connect_failed',
+    details: { provider: state.provider, access: state.access, error },
+  });
+}
 
 const PERSONAL_DOMAINS = new Set(['gmail.com', 'googlemail.com']);
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
@@ -212,14 +240,13 @@ export function accountRoutes(app: FastifyInstance, ctx: Ctx) {
     if (!state || CALLBACK_NAME[state.provider] !== name) {
       throw new HttpError(400, 'invalid_state', 'OAuth state is missing, invalid or expired');
     }
+    // A state is good for exactly one callback, whatever its outcome.
+    if (!(await claimStateNonce(ctx.oauthStore, state))) {
+      throw new HttpError(400, 'invalid_state', 'OAuth state was already used');
+    }
     const back = state.redirect ?? defaultAppRedirect(config);
     const fail = async (error: string) => {
-      await ctx.audit({
-        userId: state.userId,
-        principal: 'user',
-        action: 'account.connect_failed',
-        details: { provider: state.provider, access: state.access, error },
-      });
+      await auditConnectFailed(ctx, state, error);
       return reply.redirect(
         withQuery(back, { error, ...(state.accountId ? { accountId: state.accountId } : {}) }),
         302,
@@ -229,24 +256,66 @@ export function accountRoutes(app: FastifyInstance, ctx: Ctx) {
     if (q.error) return fail(q.error === 'access_denied' ? 'access_denied' : 'oauth_error');
     if (!q.code) return fail('missing_code');
 
+    // Nothing is exchanged or created here: whoever opened this URL may not be the user who
+    // started the flow. The app finishes it with its own session via POST /accounts/complete.
+    const pending = await putPending(ctx.oauthStore, ctx.keys, { code: q.code, state });
+    return reply.redirect(withQuery(back, { pending }), 302);
+  });
+
+  app.post('/accounts/complete', async (req): Promise<CompleteConnectRes> => {
+    const userId = req.auth.userId;
+    const body = parse(CompleteConnectReq, req.body);
+    const pending = await takePending(ctx.oauthStore, ctx.keys, body.pending);
+    if (!pending) {
+      throw new HttpError(400, 'connect_expired', 'connect result is missing, expired or used');
+    }
+    const { state, code } = pending;
+    if (state.userId !== userId) {
+      // Someone else started this flow: the consent (and its code) is discarded, never exchanged.
+      const details = { provider: state.provider, access: state.access };
+      await ctx.audit({
+        userId,
+        principal: 'user',
+        action: 'account.connect_user_mismatch',
+        details: { ...details, role: 'completer' },
+      });
+      await ctx.audit({
+        userId: state.userId,
+        principal: 'user',
+        action: 'account.connect_user_mismatch',
+        details: { ...details, role: 'starter' },
+      });
+      throw new HttpError(
+        403,
+        'connect_user_mismatch',
+        'this connect was started by a different user',
+      );
+    }
+    const fail = async (error: ConnectErrorCode): Promise<never> => {
+      await auditConnectFailed(ctx, state, error);
+      throw new HttpError(CONNECT_ERROR_STATUS[error], error, `connect failed: ${error}`);
+    };
+
     const connector = lookupConnector(ctx, state.provider);
-    let exchanged: Awaited<ReturnType<Connector['connect']['exchange']>>;
+    let exchanged: Exchanged;
     try {
       exchanged = await connector.connect.exchange({
-        code: q.code,
+        code,
         redirectUri: callbackUrl(config, state.provider),
+        // Makes the connector refuse a grant whose scopes don't match (rule 1).
+        access: state.access,
       });
     } catch (err) {
-      ctx.warn('oauth exchange failed', { provider: state.provider, err: (err as Error).message });
-      return fail('exchange_failed');
+      ctx.warn('oauth exchange failed', { provider: state.provider, err: errorFields(err) });
+      return fail(err instanceof MissingScopeError ? 'missing_scope' : 'exchange_failed');
     }
 
-    const accountId =
+    const stored =
       state.access === 'write'
         ? await storeWriteTokens(ctx, state, exchanged)
         : await storeReadTokens(ctx, state, exchanged);
-    if (typeof accountId !== 'string') return fail(accountId.error);
-    return reply.redirect(withQuery(back, { accountId }), 302);
+    if (typeof stored !== 'string') return fail(stored.error);
+    return { account: toAccount(await ctx.account(userId, stored)), access: state.access };
   });
 
   app.patch('/accounts/:id', async (req): Promise<Account> => {
@@ -303,7 +372,9 @@ export function accountRoutes(app: FastifyInstance, ctx: Ctx) {
   app.delete('/accounts/:id', async (req, reply) => {
     const userId = req.auth.userId;
     const account = await ctx.account(userId, idParam(req.params));
-    const refs = [account.tokenRef, account.writeTokenRef].filter((r): r is string => !!r);
+    // Only the read token is handled here. The API can't decrypt write tokens (only the
+    // executor can), so the write token is handed to the executor to revoke and delete.
+    const refs = [account.tokenRef].filter((r): r is string => !!r);
 
     // Best effort: revoke at the provider first; a failure never blocks deletion.
     let revoked = false;
@@ -317,17 +388,29 @@ export function accountRoutes(app: FastifyInstance, ctx: Ctx) {
         revoked = refs.length > 0;
       }
     } catch (err) {
-      ctx.warn('token revoke failed', { provider: account.provider, err: (err as Error).message });
+      ctx.warn('token revoke failed', { provider: account.provider, err: errorFields(err) });
     }
 
     await db.delete(accounts).where(and(eq(accounts.id, account.id), eq(accounts.userId, userId)));
     for (const ref of refs) await secrets.delete(ref);
+    if (account.writeTokenRef) {
+      await requestWriteTokenRevocation(ctx.enqueue, {
+        userId,
+        accountId: account.id,
+        provider: account.provider,
+        secretRef: account.writeTokenRef,
+      });
+    }
     await ctx.audit({
       userId,
       principal: 'user',
       action: 'account.deleted',
       target: `account:${account.id}`,
-      details: { provider: account.provider, revoked },
+      details: {
+        provider: account.provider,
+        revoked,
+        writeRevocationQueued: !!account.writeTokenRef,
+      },
     });
     await ctx.live(userId, { type: 'account.updated', accountId: account.id });
     return reply.code(204).send();
@@ -341,7 +424,7 @@ async function storeReadTokens(
   ctx: Ctx,
   state: OAuthState,
   ex: Exchanged,
-): Promise<string | { error: string }> {
+): Promise<string | { error: ConnectErrorCode }> {
   const { db, secrets } = ctx;
   const { userId, provider } = state;
   // Stored as the connector returns it: the gateway maps webhook identities to it verbatim.
@@ -435,7 +518,7 @@ async function storeWriteTokens(
   ctx: Ctx,
   state: OAuthState,
   ex: Exchanged,
-): Promise<string | { error: string }> {
+): Promise<string | { error: ConnectErrorCode }> {
   const { db, secrets } = ctx;
   if (!state.accountId) return { error: 'invalid_state' };
   const [account] = await db

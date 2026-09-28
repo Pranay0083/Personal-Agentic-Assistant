@@ -1,7 +1,7 @@
 import { and, count, desc, eq, sql, type SQL } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { accounts, itemBodies, items } from '@hub/db';
-import { open } from '@hub/server/secrets';
+import { itemBodyContext, open } from '@hub/server/secrets';
 import type { Item } from '@hub/shared';
 import { ItemsQuery } from '@hub/shared/api';
 import { z } from 'zod';
@@ -94,7 +94,7 @@ export function itemRoutes(app: FastifyInstance, ctx: Ctx) {
           and(eq(itemBodies.id, row.item.bodyRef), eq(itemBodies.accountId, row.item.accountId)),
         );
       if (b && (!b.expiresAt || b.expiresAt > ctx.now())) {
-        body = (await open(ctx.keys, b)).toString('utf8');
+        body = (await open(ctx.keys, b, itemBodyContext(row.item.accountId))).toString('utf8');
       }
     }
     await ctx.audit({

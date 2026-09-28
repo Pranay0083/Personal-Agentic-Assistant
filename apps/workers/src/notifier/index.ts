@@ -47,6 +47,10 @@ export function redisDedupe(): Dedupe {
 /** Starts the notifier worker. PUSH_FAKE=1 logs titles instead of sending. */
 export function start(): Closable[] {
   const e = env();
+  // env() already refuses PUSH_FAKE in production; fail closed here too.
+  if (e.PUSH_FAKE && e.NODE_ENV === 'production') {
+    throw new Error('PUSH_FAKE is not allowed in production');
+  }
   const log = createLogger('notifier');
   const deps: NotifierDeps = {
     db: getDb(),

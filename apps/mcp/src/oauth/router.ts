@@ -14,6 +14,7 @@ import { clientRegistrationHandler } from '@modelcontextprotocol/sdk/server/auth
 import { mcpAuthMetadataRouter } from '@modelcontextprotocol/sdk/server/auth/router.js';
 import type { OAuthMetadata } from '@modelcontextprotocol/sdk/shared/auth.js';
 import type { Ctx } from '../deps';
+import { errorFields } from '../log';
 import { RateLimiter } from '../rate-limit';
 import { HubClientsStore } from './clients';
 import { ConsentFlow, resourceMatches } from './consent';
@@ -162,8 +163,9 @@ export function oauthRouter(ctx: Ctx): OAuthParts {
         'Only authorization_code and refresh_token are supported',
       );
     } catch (e) {
-      if (!(e instanceof OAuthError))
-        ctx.logger?.error({ err: (e as Error).message }, 'token error');
+      if (!(e instanceof OAuthError)) {
+        ctx.logger?.error({ route: 'token', ...errorFields(e) }, 'token error');
+      }
       sendOAuthError(res, e);
     }
   });
@@ -180,6 +182,9 @@ export function oauthRouter(ctx: Ctx): OAuthParts {
       await tokens.revoke(client, body.token);
       res.status(200).json({});
     } catch (e) {
+      if (!(e instanceof OAuthError)) {
+        ctx.logger?.error({ route: 'revoke', ...errorFields(e) }, 'revoke error');
+      }
       sendOAuthError(res, e);
     }
   });

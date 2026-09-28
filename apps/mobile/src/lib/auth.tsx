@@ -16,6 +16,7 @@ import {
   type MeT,
   type SignInT,
 } from './api';
+import { currentPushToken, forgetPushToken } from './push';
 import { clearToken, loadToken, saveToken } from './token';
 import { qk, useMe } from './queries';
 
@@ -76,10 +77,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     try {
-      await api.signOut();
+      // Unregister this device's push token too, so it stops getting this user's notifications.
+      await api.signOut(await currentPushToken());
     } catch {
       // Sign out locally even if the server is unreachable.
     }
+    forgetPushToken();
     await dropSession();
   }, [dropSession]);
 

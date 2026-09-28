@@ -1,6 +1,7 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { accessRequests, grants, proposals } from '@hub/db';
+import { pairingCodeHash, safeEqual } from '@hub/server';
 import {
   AccessRequest as AccessRequestSchema,
   GmailSendPayload,
@@ -14,7 +15,7 @@ import { QUEUES } from '@hub/shared/queues';
 import type { ZodType } from 'zod';
 import { z } from 'zod';
 import type { Ctx } from '../context';
-import { badRequest, conflict, HttpError, idParam, notFound, parse } from '../http';
+import { badRequest, conflict, errorFields, HttpError, idParam, notFound, parse } from '../http';
 import { toAccessRequest, toGrant, toProposal } from '../serialize';
 
 /** Schemas an edited payload must satisfy, per action. Actions without one can't be edited. */
@@ -25,11 +26,106 @@ const PAYLOAD_SCHEMAS: Partial<Record<Proposal['action'], ZodType>> = {
 const StatusQuery = z.object({ status: ProposalStatus.optional() });
 const RequestStatusQuery = z.object({ status: AccessRequestSchema.shape.status.optional() });
 
+/** How long an `mcp_connect` request can be allowed. Same as apps/mcp connectRequestTtlMs. */
+export const MCP_CONNECT_TTL_MS = 10 * 60 * 1000;
+/** Wrong pairing codes before an `mcp_connect` request is denied. */
+export const PAIRING_MAX_ATTEMPTS = 5;
+
+/** Shared with apps/mcp, which stores it in the request's meta. */
+export { pairingCodeHash };
+
 /** BullMQ custom ids may not contain a single ':' (only the legacy 3-part form). */
 export const executorJobId = (proposalId: string) => `exec-${proposalId}`;
 
 export function approvalRoutes(app: FastifyInstance, ctx: Ctx) {
   const { db } = ctx;
+
+  /**
+   * `mcp_connect`: the MCP server polls this row and finishes the client's OAuth flow once
+   * it is allowed. Allowing needs the pairing code from the consent page on the computer,
+   * so a request someone else started (with a borrowed client name) can't be tapped
+   * through. Five wrong codes deny it; after the TTL it can't be allowed at all.
+   */
+  async function allowConnect(
+    request: typeof accessRequests.$inferSelect,
+    pairingCode: string | undefined,
+    userId: string,
+    now: Date,
+  ) {
+    const id = request.id;
+    const pendingRow = and(eq(accessRequests.id, id), eq(accessRequests.status, 'pending'));
+    if (request.createdAt.getTime() + MCP_CONNECT_TTL_MS <= now.getTime()) {
+      await db.update(accessRequests).set({ status: 'expired', decidedAt: now }).where(pendingRow);
+      throw conflict('expired', 'this connection request expired; start again on your computer');
+    }
+    if (!pairingCode) {
+      throw new HttpError(400, 'pairing_code_required', 'enter the code shown on your computer');
+    }
+    const meta = (request.meta ?? {}) as Record<string, unknown>;
+    const stored = typeof meta.pairingCodeHash === 'string' ? meta.pairingCodeHash : null;
+    // Requests from before pairing codes can't be verified: start again.
+    if (!stored) throw conflict('expired', 'this connection request can no longer be allowed');
+
+    if (!safeEqual(pairingCodeHash(id, pairingCode), stored)) {
+      // One statement, so concurrent wrong guesses all count and the fifth always denies.
+      const m = accessRequests.meta;
+      const next = sql`coalesce((${m}->>'pairingAttempts')::int, 0) + 1`;
+      const locked = sql`${next} >= ${sql.raw(String(PAIRING_MAX_ATTEMPTS))}`;
+      const [row] = await db
+        .update(accessRequests)
+        .set({
+          meta: sql`jsonb_set(${m}, '{pairingAttempts}', to_jsonb(${next}))`,
+          status: sql`case when ${locked} then 'denied' else ${accessRequests.status} end`,
+          decidedAt: sql`case when ${locked} then ${now.toISOString()}::timestamptz else ${accessRequests.decidedAt} end`,
+        })
+        .where(pendingRow)
+        .returning({ status: accessRequests.status, meta: accessRequests.meta });
+      if (!row) throw conflict('not_pending', 'request was already decided');
+      const attempts = Number((row.meta as Record<string, unknown>).pairingAttempts ?? 0);
+      await ctx.audit({
+        userId,
+        principal: 'user',
+        action: 'access_request.pairing_failed',
+        target: `access_request:${id}`,
+        details: { kind: request.kind, attempts },
+      });
+      if (row.status === 'denied') {
+        await ctx.audit({
+          userId,
+          principal: 'user',
+          action: 'access_request.denied',
+          target: `access_request:${id}`,
+          details: { kind: request.kind, principal: request.principal, reason: 'pairing_code' },
+        });
+        throw new HttpError(403, 'pairing_locked', 'too many wrong codes; the request was denied');
+      }
+      const left = Math.max(PAIRING_MAX_ATTEMPTS - attempts, 0);
+      throw new HttpError(
+        403,
+        'wrong_pairing_code',
+        `wrong code; ${left} ${left === 1 ? 'attempt' : 'attempts'} left`,
+      );
+    }
+
+    const [done] = await db
+      .update(accessRequests)
+      .set({
+        status: 'allowed',
+        decidedAt: now,
+        // apps/mcp only issues a code for an allow that carries this.
+        meta: sql`${accessRequests.meta} || ${JSON.stringify({ pairingVerifiedAt: now.toISOString() })}::jsonb`,
+      })
+      .where(pendingRow)
+      .returning({ id: accessRequests.id });
+    if (!done) throw conflict('not_pending', 'request was already decided');
+    await ctx.audit({
+      userId,
+      principal: 'user',
+      action: 'access_request.allowed',
+      target: `access_request:${id}`,
+      details: { kind: request.kind, principal: request.principal, pairingVerified: true },
+    });
+  }
 
   app.get('/proposals', async (req): Promise<{ proposals: Proposal[] }> => {
     const q = parse(StatusQuery, req.query);
@@ -92,7 +188,7 @@ export function approvalRoutes(app: FastifyInstance, ctx: Ctx) {
     try {
       await ctx.enqueue(QUEUES.executor, { proposalId: id }, { jobId: executorJobId(id) });
     } catch (err) {
-      ctx.warn('executor enqueue failed', { proposalId: id, err: (err as Error).message });
+      ctx.warn('executor enqueue failed', { proposalId: id, err: errorFields(err) });
       throw new HttpError(
         503,
         'queue_unavailable',
@@ -151,7 +247,7 @@ export function approvalRoutes(app: FastifyInstance, ctx: Ctx) {
   app.post('/access-requests/:id/allow', async (req): Promise<{ grant: Grant | null }> => {
     const userId = req.auth.userId;
     const id = idParam(req.params);
-    const { durationMinutes } = parse(AllowAccessReq, req.body);
+    const { durationMinutes, pairingCode } = parse(AllowAccessReq, req.body);
     const [request] = await db
       .select()
       .from(accessRequests)
@@ -161,20 +257,7 @@ export function approvalRoutes(app: FastifyInstance, ctx: Ctx) {
 
     const now = ctx.now();
     if (request.kind === 'mcp_connect') {
-      // The MCP server polls this row and finishes the client's OAuth flow.
-      const [done] = await db
-        .update(accessRequests)
-        .set({ status: 'allowed', decidedAt: now })
-        .where(and(eq(accessRequests.id, id), eq(accessRequests.status, 'pending')))
-        .returning({ id: accessRequests.id });
-      if (!done) throw conflict('not_pending', 'request was already decided');
-      await ctx.audit({
-        userId,
-        principal: 'user',
-        action: 'access_request.allowed',
-        target: `access_request:${id}`,
-        details: { kind: request.kind, principal: request.principal },
-      });
+      await allowConnect(request, pairingCode, userId, now);
       return { grant: null };
     }
 

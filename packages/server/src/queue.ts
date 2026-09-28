@@ -1,7 +1,8 @@
 import { Queue, Worker, type ConnectionOptions, type JobsOptions, type Processor } from 'bullmq';
 import { Redis } from 'ioredis';
-import type { QueueName } from '@hub/shared/queues';
+import { QUEUES, type QueueName, type RevokeWriteTokenJob } from '@hub/shared/queues';
 import { env } from './env';
+import { sanitizeJobError } from './errors';
 
 let connection: Redis | undefined;
 
@@ -50,8 +51,20 @@ export async function enqueue<T>(
   return (queue(name) as Queue).add(name, data, { ...opts, jobId });
 }
 
+/**
+ * A BullMQ worker. Errors escaping `processor` are replaced by a sanitized error (class name
+ * and code only), so database errors with bound params never land in Redis `failedReason`
+ * or in `failed` event logs.
+ */
 export function worker<T>(name: QueueName, processor: Processor<T>, concurrency = 5) {
-  return new Worker<T>(name, processor, {
+  const safe: Processor<T> = async (job, token, signal) => {
+    try {
+      return await processor(job, token, signal);
+    } catch (err) {
+      throw sanitizeJobError(err);
+    }
+  };
+  return new Worker<T>(name, safe, {
     connection: new Redis(env().REDIS_URL, { maxRetriesPerRequest: null }) as ConnectionOptions,
     concurrency,
   });
@@ -62,4 +75,17 @@ export async function closeQueues() {
   queues.clear();
   await connection?.quit();
   connection = undefined;
+}
+
+/**
+ * Hands a write-scope token to the executor to revoke at the provider and delete.
+ * Only the executor can decrypt write tokens, so callers (e.g. DELETE /accounts/:id) must
+ * not delete the secret themselves. Idempotent per secret.
+ */
+export async function requestWriteTokenRevocation(
+  enqueueFn: (name: QueueName, data: unknown, opts?: { jobId?: string }) => Promise<unknown>,
+  job: Omit<RevokeWriteTokenJob, 'task'>,
+): Promise<void> {
+  const data: RevokeWriteTokenJob = { task: 'revoke-write-token', ...job };
+  await enqueueFn(QUEUES.executor, data, { jobId: `revoke-write-${job.secretRef}` });
 }

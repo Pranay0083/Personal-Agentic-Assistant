@@ -1,7 +1,8 @@
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import { accounts, audit, auditLog, proposals, type Db } from '@hub/db';
 import {
+  ConnectorError,
   ReconnectRequiredError,
   RetryableError,
   type Connector,
@@ -10,7 +11,7 @@ import {
   type OAuthTokens,
 } from '@hub/connectors';
 import { can, parsePrincipal } from '@hub/policy';
-import type { Logger } from '@hub/server';
+import { errorInfo, type Logger } from '@hub/server';
 import { AccountFilters, GmailSendPayload, type ActionResource } from '@hub/shared';
 import type { LiveEvent } from '@hub/shared/queues';
 
@@ -22,13 +23,19 @@ import type { LiveEvent } from '@hub/shared/queues';
  * - Policy is re-checked at execution time; a denial fails the proposal without sending.
  * - A proposal found in `executing` (crash between send and bookkeeping) is reconciled with
  *   `connector.findExecuted` before anything is re-sent. Without that lookup it is failed.
+ * - Ambiguous failures (network error or timeout after the request may have reached the
+ *   provider, or a retry that finds a send was attempted) never re-send because one lookup
+ *   missed: the lookup is retried with delays (the provider may not have indexed the send
+ *   yet) and, if still not found, the proposal fails `needs_review: delivery unknown`.
+ *   An `executor.sending` audit row is written right before every send; an
+ *   `executor.retry` row marks a retry that is known not to have sent.
  * - Recipients and content come only from the stored, re-validated payload.
  */
 
 export type ExecutorDeps = {
   db: Db;
   secrets: {
-    get(ref: string): Promise<string>;
+    get(ref: string, expected?: { userId?: string }): Promise<string>;
     replace(ref: string, value: string): Promise<void>;
   };
   /** Connector registry lookup; may throw for unsupported providers. */
@@ -36,7 +43,13 @@ export type ExecutorDeps = {
   publishLive: (userId: string, event: LiveEvent) => Promise<void>;
   now: () => Date;
   log?: Logger;
+  /** Waits between findExecuted lookups after an ambiguous failure. Default 2s, 5s, 15s. */
+  reconcileDelaysMs?: readonly number[];
+  sleep?: (ms: number) => Promise<void>;
 };
+
+export const RECONCILE_DELAYS_MS = [2_000, 5_000, 15_000] as const;
+export const NEEDS_REVIEW = 'needs_review: delivery unknown';
 
 export type ExecOutcome =
   | { status: 'missing' }
@@ -89,6 +102,24 @@ export function idsOnly(result: ExecuteResult): Record<string, string | number |
   return out;
 }
 
+const NETWORK_CODE =
+  /^(ECONNRESET|ETIMEDOUT|ECONNREFUSED|ECONNABORTED|EAI_AGAIN|EPIPE|UND_ERR|TimeoutError|AbortError)/;
+
+/**
+ * True if the request may have reached the provider and been acted on although we got an
+ * error: network errors and timeouts (no response), and 5xx other than 503. A 429, a 503
+ * or any 4xx is a definite "not done".
+ */
+export function isAmbiguousError(err: unknown): boolean {
+  if (err instanceof ReconnectRequiredError) return false;
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { status?: unknown; code?: unknown; name?: unknown };
+  if (typeof e.status === 'number') return e.status >= 500 && e.status !== 503;
+  if (err instanceof RetryableError) return true; // no status: network error or timeout
+  if (typeof e.code === 'string' && NETWORK_CODE.test(e.code)) return true;
+  return e.name === 'TimeoutError' || e.name === 'AbortError';
+}
+
 export function isRetryableError(err: unknown): boolean {
   if (err instanceof ReconnectRequiredError) return false;
   if (err instanceof RetryableError) return true;
@@ -96,18 +127,23 @@ export function isRetryableError(err: unknown): boolean {
     const e = err as { status?: unknown; code?: unknown; retryable?: unknown };
     if (e.retryable === true) return true;
     if (typeof e.status === 'number') return e.status === 429 || e.status >= 500;
-    if (
-      typeof e.code === 'string' &&
-      /^(ECONNRESET|ETIMEDOUT|ECONNREFUSED|EAI_AGAIN|EPIPE|UND_ERR)/.test(e.code)
-    ) {
+    if (typeof e.code === 'string' && NETWORK_CODE.test(e.code)) {
       return true;
     }
   }
   return false;
 }
 
-const safeMessage = (err: unknown) =>
-  (err instanceof Error ? `${err.name}: ${err.message}` : 'unknown error').slice(0, 300);
+/**
+ * Error text stored on the proposal and in the audit log. Connector errors are written to
+ * be safe (no tokens or content); anything else (e.g. a DB error, whose message holds the
+ * SQL params) is reduced to its class name and code.
+ */
+const safeMessage = (err: unknown) => {
+  if (err instanceof ConnectorError) return `${err.name}: ${err.message}`.slice(0, 300);
+  const info = errorInfo(err);
+  return (info.code ? `${info.err} (${info.code})` : info.err).slice(0, 300);
+};
 
 export async function executeProposal(
   deps: ExecutorDeps,
@@ -129,6 +165,30 @@ export async function executeProposal(
   });
 }
 
+/**
+ * Did an earlier attempt possibly send? True if the latest send marker for this proposal is
+ * `executor.sending` (a send was started and never confirmed either way).
+ */
+async function sendMayHaveHappened(db: Db, userId: string, target: string): Promise<boolean> {
+  const [last] = await db
+    .select({ action: auditLog.action })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.userId, userId),
+        eq(auditLog.target, target),
+        inArray(auditLog.action, ['executor.sending', 'executor.retry']),
+      ),
+    )
+    .orderBy(desc(auditLog.id))
+    .limit(1);
+  return last?.action === 'executor.sending';
+}
+
+type Step =
+  | { kind: 'done'; outcome: ExecOutcome }
+  | { kind: 'sent'; result: ExecuteResult; reconciled: boolean };
+
 async function run(
   deps: ExecutorDeps,
   proposalId: string,
@@ -146,9 +206,15 @@ async function run(
   const { proposal, account } = row;
   const userId = proposal.userId;
   const target = `proposal:${proposalId}`;
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const delays = deps.reconcileDelaysMs ?? RECONCILE_DELAYS_MS;
 
   const publish = () => deps.publishLive(userId, { type: 'proposal.updated', proposalId });
-  const fail = async (reason: string, kind: 'executor.failed' | 'executor.denied') => {
+  const fail = async (
+    reason: string,
+    kind: 'executor.failed' | 'executor.denied',
+    extra: Record<string, unknown> = {},
+  ): Promise<ExecOutcome> => {
     await db
       .update(proposals)
       .set({ status: 'failed', error: reason.slice(0, 300) })
@@ -160,15 +226,18 @@ async function run(
       principal: EXECUTOR,
       action: kind,
       target,
-      details: { reason: reason.slice(0, 300) },
+      details: { reason: reason.slice(0, 300), ...extra },
     });
     await publish();
-    return kind === 'executor.denied'
-      ? ({ status: 'denied', reason } as const)
-      : ({ status: 'failed', reason } as const);
+    return kind === 'executor.denied' ? { status: 'denied', reason } : { status: 'failed', reason };
   };
+  const needsReview = (why: string) =>
+    fail(NEEDS_REVIEW, 'executor.failed', { needsReview: true, why });
 
   let resumed: boolean;
+  // Only for a job that finds the proposal `executing`: a user re-approval is a human
+  // decision to try again (after a lookup), not an automatic re-send.
+  let ambiguousPrior = false;
   if (proposal.status === 'approved') {
     const claimed = await db
       .update(proposals)
@@ -191,6 +260,7 @@ async function run(
     resumed = !!prior;
   } else if (proposal.status === 'executing') {
     resumed = true;
+    ambiguousPrior = await sendMayHaveHappened(db, userId, target);
   } else {
     return { status: 'skipped', reason: `status is ${proposal.status}` };
   }
@@ -199,100 +269,165 @@ async function run(
     principal: EXECUTOR,
     action: 'executor.start',
     target,
-    details: { action: proposal.action, accountId: account.id, resumed },
+    details: { action: proposal.action, accountId: account.id, resumed, ambiguousPrior },
   });
   await publish();
 
-  try {
-    // 1. Policy, re-checked now: the level may have changed or the user may have paused.
-    const resource = resourceForAction(proposal.action);
-    if (!resource) throw new PermanentFailure(`unsupported action ${proposal.action}`);
-    let decision;
+  const attempt = async (): Promise<Step> => {
+    let sendAttempted = false;
+    let lookup: ((waits: readonly number[]) => Promise<ExecuteResult | null>) | null = null;
     try {
-      decision = await can(
-        db,
-        parsePrincipal(proposal.agent, userId),
-        account.id,
-        resource,
-        'write',
-      );
-    } catch {
-      return await fail(`unknown principal ${proposal.agent}`, 'executor.denied');
-    }
-    if (!decision.allow) return await fail(`policy denied: ${decision.reason}`, 'executor.denied');
-    // needsApproval is satisfied: only approved proposals reach this point.
-
-    // 2. Payload, re-validated. Recipients come only from here.
-    const schema = PAYLOAD_SCHEMAS[proposal.action];
-    if (!schema) throw new PermanentFailure(`no payload schema for ${proposal.action}`);
-    const parsed = schema.safeParse(proposal.payload);
-    if (!parsed.success) throw new PermanentFailure('payload failed validation');
-    const payload = parsed.data;
-
-    // 3. Write-scope token (separate consent). Decrypted only here.
-    if (!account.writeTokenRef) throw new PermanentFailure('write access not granted');
-    let connector: Connector;
-    try {
-      connector = deps.getConnector(account.provider);
-    } catch {
-      throw new PermanentFailure(`no connector for ${account.provider}`);
-    }
-    if (!connector.execute)
-      throw new PermanentFailure(`${account.provider} cannot execute ${proposal.action}`);
-
-    const makeCtx = async (ref: string): Promise<ConnectorContext> => ({
-      accountId: account.id,
-      externalId: account.externalId,
-      tokens: parseTokens(await deps.secrets.get(ref)),
-      saveTokens: (tokens) => deps.secrets.replace(ref, JSON.stringify(tokens)),
-      cursor: account.syncCursor,
-      filters: AccountFilters.parse(account.filters ?? {}),
-    });
-
-    // 4. Crash-safe retry: did an earlier attempt already send?
-    if (resumed) {
-      if (!connector.findExecuted) {
-        throw new PermanentFailure(
-          'an earlier attempt may have sent this; not retrying to avoid a duplicate',
+      // 1. Policy, re-checked now: the level may have changed or the user may have paused.
+      const resource = resourceForAction(proposal.action);
+      if (!resource) throw new PermanentFailure(`unsupported action ${proposal.action}`);
+      let decision;
+      try {
+        decision = await can(
+          db,
+          parsePrincipal(proposal.agent, userId),
+          account.id,
+          resource,
+          'write',
         );
+      } catch {
+        return {
+          kind: 'done',
+          outcome: await fail(`unknown principal ${proposal.agent}`, 'executor.denied'),
+        };
       }
-      // Gmail's send scope cannot search the mailbox, so the lookup uses the read token.
-      const lookupRef = account.tokenRef ?? account.writeTokenRef;
-      const found = await connector.findExecuted(
-        await makeCtx(lookupRef),
+      if (!decision.allow) {
+        return {
+          kind: 'done',
+          outcome: await fail(`policy denied: ${decision.reason}`, 'executor.denied'),
+        };
+      }
+      // needsApproval is satisfied: only approved proposals reach this point.
+
+      // 2. Payload, re-validated. Recipients come only from here.
+      const schema = PAYLOAD_SCHEMAS[proposal.action];
+      if (!schema) throw new PermanentFailure(`no payload schema for ${proposal.action}`);
+      const parsed = schema.safeParse(proposal.payload);
+      if (!parsed.success) throw new PermanentFailure('payload failed validation');
+      const payload = parsed.data;
+
+      // 3. Write-scope token (separate consent). Decrypted only here.
+      if (!account.writeTokenRef) throw new PermanentFailure('write access not granted');
+      const writeTokenRef = account.writeTokenRef;
+      let connector: Connector;
+      try {
+        connector = deps.getConnector(account.provider);
+      } catch {
+        throw new PermanentFailure(`no connector for ${account.provider}`);
+      }
+      if (!connector.execute)
+        throw new PermanentFailure(`${account.provider} cannot execute ${proposal.action}`);
+      const execute = connector.execute.bind(connector);
+
+      const makeCtx = async (ref: string): Promise<ConnectorContext> => ({
+        accountId: account.id,
+        externalId: account.externalId,
+        tokens: parseTokens(await deps.secrets.get(ref, { userId })),
+        saveTokens: (tokens) => deps.secrets.replace(ref, JSON.stringify(tokens)),
+        cursor: account.syncCursor,
+        filters: AccountFilters.parse(account.filters ?? {}),
+      });
+
+      if (connector.findExecuted) {
+        const find = connector.findExecuted.bind(connector);
+        // Gmail's send scope cannot search the mailbox, so the lookup uses the read token.
+        const lookupRef = account.tokenRef ?? writeTokenRef;
+        let lookupCtx: ConnectorContext | undefined;
+        /**
+         * Looks for an earlier send, once plus once after each wait. With waits, a lookup
+         * error counts as a miss (we are already on the ambiguous path); without, it throws.
+         */
+        lookup = async (waits) => {
+          for (let i = 0; i <= waits.length; i++) {
+            if (i > 0) await sleep(waits[i - 1]!);
+            try {
+              lookupCtx ??= await makeCtx(lookupRef);
+              const found = await find(lookupCtx, proposal.action, proposal.idempotencyKey);
+              if (found) return found;
+            } catch (err) {
+              if (waits.length === 0) throw err;
+              deps.log?.warn({ proposalId, ...errorInfo(err) }, 'executor lookup failed');
+            }
+          }
+          return null;
+        };
+      }
+
+      // 4. Crash-safe retry: did an earlier attempt already send?
+      if (resumed) {
+        if (!lookup) {
+          throw new PermanentFailure(
+            'an earlier attempt may have sent this; not retrying to avoid a duplicate',
+          );
+        }
+        const found = await lookup(ambiguousPrior ? delays : []);
+        if (found) return { kind: 'sent', result: found, reconciled: true };
+        if (ambiguousPrior) {
+          return { kind: 'done', outcome: await needsReview('earlier send not found') };
+        }
+      }
+
+      // 5. Send. The marker is durable before the request, so a crash from here on is
+      //    treated as "may have sent" by the next attempt.
+      await audit(db, { userId, principal: EXECUTOR, action: 'executor.sending', target });
+      sendAttempted = true;
+      const result = await execute(
+        await makeCtx(writeTokenRef),
         proposal.action,
+        payload,
         proposal.idempotencyKey,
       );
-      if (found) return await markExecuted(deps, proposalId, userId, found, true);
-    }
-
-    const result = await connector.execute(
-      await makeCtx(account.writeTokenRef),
-      proposal.action,
-      payload,
-      proposal.idempotencyKey,
-    );
-    return await markExecuted(deps, proposalId, userId, result, false);
-  } catch (err) {
-    if (err instanceof PermanentFailure) return await fail(err.message, 'executor.failed');
-    if (err instanceof ReconnectRequiredError)
-      return await fail('reconnect required', 'executor.failed');
-    if (isRetryableError(err)) {
-      if (opts.finalAttempt) {
-        return await fail(
-          `gave up after retries (${safeMessage(err)}); it may not have been sent`,
-          'executor.failed',
-        );
+      return { kind: 'sent', result, reconciled: false };
+    } catch (err) {
+      if (err instanceof PermanentFailure) {
+        return { kind: 'done', outcome: await fail(err.message, 'executor.failed') };
       }
-      deps.log?.warn(
-        { proposalId, error: err instanceof Error ? err.name : 'error' },
-        'executor retrying',
-      );
-      // Status stays `executing`; the retry reconciles with findExecuted before re-sending.
-      throw err;
+      if (err instanceof ReconnectRequiredError) {
+        return { kind: 'done', outcome: await fail('reconnect required', 'executor.failed') };
+      }
+      if (sendAttempted && isAmbiguousError(err)) {
+        // The request may have gone through. Never re-send on one missed lookup: the
+        // provider may not have indexed the message yet.
+        deps.log?.warn({ proposalId, ...errorInfo(err) }, 'executor send outcome unknown');
+        const found = lookup ? await lookup(delays) : null;
+        if (found) return { kind: 'sent', result: found, reconciled: true };
+        return { kind: 'done', outcome: await needsReview(safeMessage(err)) };
+      }
+      if (isRetryableError(err)) {
+        // Known not sent (rejected before or instead of being processed).
+        if (opts.finalAttempt) {
+          return {
+            kind: 'done',
+            outcome: await fail(
+              `gave up after retries (${safeMessage(err)}); it was not sent`,
+              'executor.failed',
+            ),
+          };
+        }
+        await audit(db, {
+          userId,
+          principal: EXECUTOR,
+          action: 'executor.retry',
+          target,
+          details: { sent: false, error: safeMessage(err) },
+        });
+        deps.log?.warn({ proposalId, ...errorInfo(err) }, 'executor retrying');
+        // Status stays `executing`; the retry reconciles with findExecuted before re-sending.
+        throw err;
+      }
+      return { kind: 'done', outcome: await fail(safeMessage(err), 'executor.failed') };
     }
-    return await fail(safeMessage(err), 'executor.failed');
-  }
+  };
+
+  const step = await attempt();
+  if (step.kind === 'done') return step.outcome;
+  // Outside attempt(): if this bookkeeping fails, the job retries, finds `executing` with
+  // the send marker, and reconciles instead of re-sending.
+  return markExecuted(deps, proposalId, userId, step.result, step.reconciled);
 }
 
 async function markExecuted(

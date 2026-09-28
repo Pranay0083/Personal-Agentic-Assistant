@@ -2,10 +2,19 @@
 import { getConnector } from '@hub/connectors';
 import { createDb } from '@hub/db';
 import { createRouter } from '@hub/models';
-import { closeQueues, createLogger, enqueue, env, publishLive, subscribeLive } from '@hub/server';
+import {
+  closeQueues,
+  createLogger,
+  enqueue,
+  env,
+  publishLive,
+  redis,
+  subscribeLive,
+} from '@hub/server';
 import { keyProvider, SecretStore } from '@hub/server/secrets';
 import { buildApi } from './app';
 import { configFromEnv } from './deps';
+import { redisOAuthStore } from './oauth-state';
 
 const e = env();
 const logger = createLogger('api');
@@ -22,6 +31,7 @@ const app = await buildApi({
   subscribeLive,
   // Throws for unsupported providers; the API turns that into 400 unsupported_provider.
   getConnector,
+  oauthStore: redisOAuthStore(redis()),
   router: createRouter({ db, secrets }),
   now: () => new Date(),
   config: configFromEnv(e),

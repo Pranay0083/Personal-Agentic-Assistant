@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { and, eq, isNull, ne, or } from 'drizzle-orm';
 import { audit, items, tasks } from '@hub/db';
 import {
@@ -22,12 +23,31 @@ import {
   type AgentDeps,
   type AgentOutcome,
 } from './context';
+import { PUSH_TEXT } from '../notifier/text';
 import { EXTRACTOR_SYSTEM, ExtractorOutput, PROMISES_ADDENDUM } from './prompts';
 import { isVipSender } from './triage';
 
 const PRINCIPAL = 'agent:extractor';
 /** Date-only deadlines ("by Thursday") are due at end of the working day, local time. */
 export const DEFAULT_DUE_TIME = '17:00';
+
+/** Lowercased, punctuation-free, whitespace-collapsed title: "Send the Q3 deck." = "send the q3 deck". */
+export function normalizeTaskTitle(title: string): string {
+  return title
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+/**
+ * Dedupe key for an extracted task: keyed by the normalized title, not its position, so a
+ * retried run whose output comes back in a different order adds no duplicates.
+ */
+export function extractorDedupeKey(itemId: string, title: string): string {
+  const hash = createHash('sha256').update(normalizeTaskTitle(title)).digest('hex').slice(0, 32);
+  return `extractor:${itemId}:${hash}`;
+}
 
 /** Turns the model's local due date/time into a UTC instant; rejects implausible dates. */
 export function resolveDueAt(
@@ -121,8 +141,7 @@ export async function runExtractor(deps: AgentDeps, itemId: string): Promise<Age
       const job: NotifierJob = {
         userId,
         kind: 'vip',
-        title: `${ctx.item.author ?? 'VIP'} needs you`,
-        body: ctx.item.summary ?? ctx.item.title ?? '',
+        ...PUSH_TEXT.vipNeedsYou,
         data: { itemId },
         dedupeKey: `vip:${itemId}`,
       };
@@ -137,21 +156,23 @@ export async function runExtractor(deps: AgentDeps, itemId: string): Promise<Age
   // the user confirms or rejects them, so the task itself is the approval request.
 
   const created: string[] = [];
-  for (const [i, t] of found.entries()) {
+  for (const t of found) {
     const dueAt = resolveDueAt(t.due, t.dueTime, refDate, ctx.timezone);
+    const title = t.title.replace(/\s+/g, ' ').trim().slice(0, 200);
     const [row] = await db
       .insert(tasks)
       .values({
         userId,
         accountId,
-        title: t.title.replace(/\s+/g, ' ').trim().slice(0, 200),
+        title,
         dueAt,
         project: t.project?.trim().slice(0, 80) || null,
         sourceItemId: itemId,
         confidence: t.confidence ?? null,
         createdBy: PRINCIPAL,
-        // Index-based: re-running the extractor on the same item never duplicates a task.
-        dedupeKey: `extractor:${itemId}:${i}`,
+        // Title-based: re-running the extractor on the same item never duplicates a task,
+        // whatever order the model returns them in.
+        dedupeKey: extractorDedupeKey(itemId, title),
       })
       .onConflictDoNothing({ target: [tasks.userId, tasks.dedupeKey] })
       .returning({ id: tasks.id, title: tasks.title, dueAt: tasks.dueAt });
@@ -180,8 +201,8 @@ export async function runExtractor(deps: AgentDeps, itemId: string): Promise<Age
     const job: NotifierJob = {
       userId,
       kind: 'task',
-      title: 'New task',
-      body: dueLabel ? `${row.title} · due ${dueLabel}` : row.title,
+      // Never the task title: it is model output over message text.
+      ...PUSH_TEXT.task(dueLabel),
       data: { taskId: row.id, itemId },
       dedupeKey: `task:${row.id}`,
     };
