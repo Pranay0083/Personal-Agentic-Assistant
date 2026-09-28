@@ -1,0 +1,17 @@
+{
+  "message": {
+    "attributes": {
+      "ce-datacontenttype": "application/json",
+      "ce-id": "subscriptions/chat-spaces-czpbbTI1Y2Z0NjAw/expirationReminder/1791190361",
+      "ce-source": "//workspaceevents.googleapis.com/subscriptions/chat-spaces-czpbbTI1Y2Z0NjAw",
+      "ce-specversion": "1.0",
+      "ce-subject": "//workspaceevents.googleapis.com/subscriptions/chat-spaces-czpbbTI1Y2Z0NjAw",
+      "ce-time": "2026-10-04T22:32:41.123456Z",
+      "ce-type": "google.workspace.events.subscription.v1.expirationReminder"
+    },
+    "data": "eyJzdWJzY3JpcHRpb24iOnsibmFtZSI6InN1YnNjcmlwdGlvbnMvY2hhdC1zcGFjZXMtY3pwYmJUSTFZMlowTmpBdyIsImV4cGlyZV90aW1lIjoiMjAyNi0xMC0wNVQxMDozMjo0MS4xMjM0NTZaIn19",
+    "messageId": "15123456789099999",
+    "publishTime": "2026-10-04T22:32:42.000Z"
+  },
+  "subscription": "projects/hub-dev/subscriptions/workspace-events-push"
+}

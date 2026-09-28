@@ -1,0 +1,19 @@
+{
+  "message": {
+    "attributes": {
+      "ce-datacontenttype": "application/json",
+      "ce-id": "spaces/AAAAq3Lk0aE/spaceEvents/Q2hhdEV2ZW50MTIzNDU2Nzg",
+      "ce-source": "//workspaceevents.googleapis.com/subscriptions/chat-spaces-czpbbTI1Y2Z0NjAw",
+      "ce-specversion": "1.0",
+      "ce-subject": "//chat.googleapis.com/spaces/AAAAq3Lk0aE",
+      "ce-time": "2026-09-28T09:01:02.123456Z",
+      "ce-type": "google.workspace.chat.message.v1.created"
+    },
+    "data": "eyJtZXNzYWdlIjp7Im5hbWUiOiJzcGFjZXMvQUFBQXEzTGswYUUvbWVzc2FnZXMvWngxUW0zcEwwYUUuWngxUW0zcEwwYUUifX0=",
+    "messageId": "15123456789012345",
+    "message_id": "15123456789012345",
+    "publishTime": "2026-09-28T09:01:03.001Z",
+    "publish_time": "2026-09-28T09:01:03.001Z"
+  },
+  "subscription": "projects/hub-dev/subscriptions/workspace-events-push"
+}

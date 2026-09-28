@@ -1,4 +1,4 @@
-/** Fake-mode helpers for dev scripts (e.g. the gateway's fake:email). Not for production code. */
+/** Fake-mode helpers for dev scripts (the gateway's fake:email, fake:google). Not for production code. */
 export {
   FakeGmailStore,
   defaultFakeStore,
@@ -7,4 +7,13 @@ export {
   type FakeMailbox,
   type NewFakeMessage,
 } from './fake-store';
+export type {
+  FakeGoogle,
+  FakeChannel,
+  FakeEventSubscription,
+  NewFakeCalendarEvent,
+  NewFakeChatMessage,
+  NewFakeDriveShare,
+} from './fake-google-store';
 export { fakeClientFactory, fakeAuth } from './fake';
+export { fakeRestFactory } from './fake-google';

@@ -1,0 +1,57 @@
+{
+  "kind": "drive#fileList",
+  "incompleteSearch": false,
+  "files": [
+    {
+      "kind": "drive#file",
+      "id": "1BudGetSheetZyXwVuTsRqPoNmLkJiHgFeDcBa98765",
+      "name": "FY27 budget",
+      "mimeType": "application/vnd.google-apps.spreadsheet",
+      "webViewLink": "https://docs.google.com/spreadsheets/d/1BudGetSheetZyXwVuTsRqPoNmLkJiHgFeDcBa98765/edit?usp=drivesdk",
+      "createdTime": "2026-08-02T04:30:00.000Z",
+      "modifiedTime": "2026-09-28T09:20:04.000Z",
+      "lastModifyingUser": {
+        "kind": "drive#user",
+        "displayName": "Sam Ortiz",
+        "me": false,
+        "emailAddress": "sam@company.example"
+      },
+      "owners": [
+        {
+          "kind": "drive#user",
+          "displayName": "Alex Chen",
+          "me": true,
+          "emailAddress": "alex@company.example"
+        }
+      ],
+      "ownedByMe": true,
+      "shared": true,
+      "trashed": false
+    },
+    {
+      "kind": "drive#file",
+      "id": "1MyNotesDocQwErTyUiOpAsDfGhJkLzXcVbNm4567",
+      "name": "My notes",
+      "mimeType": "application/vnd.google-apps.document",
+      "webViewLink": "https://docs.google.com/document/d/1MyNotesDocQwErTyUiOpAsDfGhJkLzXcVbNm4567/edit?usp=drivesdk",
+      "modifiedTime": "2026-09-28T09:31:00.000Z",
+      "lastModifyingUser": {
+        "kind": "drive#user",
+        "displayName": "Alex Chen",
+        "me": true,
+        "emailAddress": "alex@company.example"
+      },
+      "owners": [
+        {
+          "kind": "drive#user",
+          "displayName": "Alex Chen",
+          "me": true,
+          "emailAddress": "alex@company.example"
+        }
+      ],
+      "ownedByMe": true,
+      "shared": false,
+      "trashed": false
+    }
+  ]
+}

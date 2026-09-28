@@ -1,0 +1,37 @@
+{
+  "spaces": [
+    {
+      "name": "spaces/AAAAq3Lk0aE",
+      "type": "ROOM",
+      "displayName": "Launch team",
+      "spaceThreadingState": "THREADED_MESSAGES",
+      "spaceType": "SPACE",
+      "spaceHistoryState": "HISTORY_ON",
+      "createTime": "2026-06-02T08:00:00.000000Z",
+      "lastActiveTime": "2026-09-28T09:05:12.345678Z",
+      "membershipCount": { "joinedDirectHumanUserCount": 6 },
+      "spaceUri": "https://chat.google.com/room/AAAAq3Lk0aE?cls=11"
+    },
+    {
+      "name": "spaces/AAAAdmPr1ya",
+      "type": "DM",
+      "singleUserBotDm": false,
+      "spaceThreadingState": "UNTHREADED_MESSAGES",
+      "spaceType": "DIRECT_MESSAGE",
+      "spaceHistoryState": "HISTORY_ON",
+      "createTime": "2026-03-11T08:00:00.000000Z",
+      "lastActiveTime": "2026-09-28T08:40:00.100200Z",
+      "spaceUri": "https://chat.google.com/dm/AAAAdmPr1ya?cls=11"
+    },
+    {
+      "name": "spaces/AAAAoldGrp9",
+      "type": "ROOM",
+      "spaceThreadingState": "UNTHREADED_MESSAGES",
+      "spaceType": "GROUP_CHAT",
+      "spaceHistoryState": "HISTORY_ON",
+      "createTime": "2025-11-01T08:00:00.000000Z",
+      "lastActiveTime": "2026-01-15T12:00:00.000000Z",
+      "spaceUri": "https://chat.google.com/room/AAAAoldGrp9?cls=11"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "error": {
+    "code": 404,
+    "message": "Page token is not valid: 12.",
+    "errors": [
+      {
+        "message": "Page token is not valid: 12.",
+        "domain": "global",
+        "reason": "notFound",
+        "location": "pageToken",
+        "locationType": "parameter"
+      }
+    ]
+  }
+}

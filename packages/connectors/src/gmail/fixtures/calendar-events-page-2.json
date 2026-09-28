@@ -1,0 +1,68 @@
+{
+  "kind": "calendar#events",
+  "etag": "\"p33c9vbgqmri8o0o\"",
+  "summary": "alex@company.example",
+  "description": "",
+  "updated": "2026-09-28T09:41:12.482Z",
+  "timeZone": "Asia/Kolkata",
+  "accessRole": "owner",
+  "defaultReminders": [{ "method": "popup", "minutes": 10 }],
+  "nextSyncToken": "CPjA6uKT1YgDEPjA6uKT1YgDGAUghIDAhQI=",
+  "items": [
+    {
+      "kind": "calendar#event",
+      "etag": "\"3452660011223000\"",
+      "id": "3lq9e2m8b7n6v5c4x3z2a1s0df",
+      "status": "confirmed",
+      "htmlLink": "https://www.google.com/calendar/event?eid=M2xxOWUybThiN242djVjNHgzejJhMXMwZGYgYWxleEBjb21wYW55LmV4YW1wbGU",
+      "created": "2026-09-20T05:00:00.000Z",
+      "updated": "2026-09-27T14:22:05.120Z",
+      "summary": "Company offsite",
+      "creator": { "email": "people-team@company.example", "displayName": "People Team" },
+      "organizer": { "email": "people-team@company.example", "displayName": "People Team" },
+      "start": { "date": "2026-10-09" },
+      "end": { "date": "2026-10-11" },
+      "transparency": "transparent",
+      "iCalUID": "3lq9e2m8b7n6v5c4x3z2a1s0df@google.com",
+      "sequence": 1,
+      "attendees": [
+        { "email": "alex@company.example", "self": true, "responseStatus": "declined" },
+        {
+          "email": "people-team@company.example",
+          "displayName": "People Team",
+          "organizer": true,
+          "responseStatus": "accepted"
+        }
+      ],
+      "reminders": { "useDefault": false },
+      "eventType": "default"
+    },
+    {
+      "kind": "calendar#event",
+      "etag": "\"3452671999000000\"",
+      "id": "7h2k4m6n8p0q1r3s5t7u9v1w3x",
+      "status": "cancelled"
+    },
+    {
+      "kind": "calendar#event",
+      "etag": "\"3452600000000000\"",
+      "id": "_60q30c1g60o30e1i60o4ac1g60rj8gpl88rj2c1h84s34h9g60s30c1g60o30c1g",
+      "status": "confirmed",
+      "htmlLink": "https://www.google.com/calendar/event?eid=X2Ww",
+      "created": "2026-09-01T00:00:00.000Z",
+      "updated": "2026-09-26T03:00:00.000Z",
+      "summary": "Office",
+      "creator": { "email": "alex@company.example", "self": true },
+      "organizer": { "email": "alex@company.example", "self": true },
+      "start": { "date": "2026-09-29" },
+      "end": { "date": "2026-09-30" },
+      "transparency": "transparent",
+      "visibility": "public",
+      "iCalUID": "wl-2026-09-29@google.com",
+      "sequence": 0,
+      "reminders": { "useDefault": false },
+      "eventType": "workingLocation",
+      "workingLocationProperties": { "type": "officeLocation", "officeLocation": { "label": "HQ" } }
+    }
+  ]
+}

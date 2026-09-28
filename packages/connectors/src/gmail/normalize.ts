@@ -176,8 +176,13 @@ export function normalizeGmail(raw: GmailRecord | GmailMessage): NormalizedItem 
     summary: m.snippet ? decodeEntities(m.snippet) : null,
     body: extractBody(m.payload),
     url: gmailWebUrl(rec.accountEmail, m.id),
-    // Gmail label ids, plus `rfc822msgid:<id@host>` so the reply agent can thread.
-    labels: mid ? [...labels, `${RFC822_LABEL_PREFIX}${mid}`] : labels,
+    // Gmail label ids, `rfc822msgid:<id@host>` so the reply agent can thread, and the
+    // trusted `hub:from_me` signal (from the SENT label, never from the text).
+    labels: [
+      ...labels,
+      ...(mid ? [`${RFC822_LABEL_PREFIX}${mid}`] : []),
+      ...(labels.includes('SENT') ? ['hub:from_me'] : []),
+    ],
     receivedAt: receivedAt(m),
     fromMe: labels.includes('SENT'),
   };

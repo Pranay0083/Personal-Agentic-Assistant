@@ -1,0 +1,7 @@
+{
+  "kind": "api#channel",
+  "id": "hubdrv-0a1b2c3d4e5f60718293a4b5",
+  "resourceId": "Hq8y3KpL0v2mN6bXcR5tZ1wE9aU",
+  "resourceUri": "https://www.googleapis.com/drive/v3/changes?alt=json&includeItemsFromAllDrives=true&pageToken=8841&supportsAllDrives=true",
+  "expiration": "1791796361000"
+}

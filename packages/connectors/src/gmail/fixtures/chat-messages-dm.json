@@ -1,0 +1,14 @@
+{
+  "messages": [
+    {
+      "name": "spaces/AAAAdmPr1ya/messages/Ww3So5rN2cG.Ww3So5rN2cG",
+      "sender": { "name": "users/112233445566778899001", "type": "HUMAN" },
+      "createTime": "2026-09-28T08:40:00.100200Z",
+      "text": "Did legal sign off on the vendor contract?",
+      "formattedText": "Did legal sign off on the vendor contract?",
+      "thread": { "name": "spaces/AAAAdmPr1ya/threads/Ww3So5rN2cG" },
+      "space": { "name": "spaces/AAAAdmPr1ya" },
+      "argumentText": "Did legal sign off on the vendor contract?"
+    }
+  ]
+}

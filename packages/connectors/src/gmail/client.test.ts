@@ -182,6 +182,10 @@ describe('real Gmail client (local fixture server)', () => {
     );
     expect(read.searchParams.get('scope')!.split(' ')).toEqual([
       'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/calendar.events.readonly',
+      'https://www.googleapis.com/auth/drive.metadata.readonly',
+      'https://www.googleapis.com/auth/chat.messages.readonly',
+      'https://www.googleapis.com/auth/chat.spaces.readonly',
       'openid',
       'email',
     ]);
@@ -200,5 +204,6 @@ describe('real Gmail client (local fixture server)', () => {
     const ws = write.searchParams.get('scope')!;
     expect(ws).toContain('https://www.googleapis.com/auth/gmail.send');
     expect(ws).not.toContain('gmail.readonly');
+    expect(ws).not.toContain('calendar');
   });
 });

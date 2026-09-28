@@ -1,0 +1,79 @@
+{
+  "kind": "calendar#events",
+  "etag": "\"p33c9vbgqmri8o0o\"",
+  "summary": "alex@company.example",
+  "description": "",
+  "updated": "2026-09-28T09:41:12.482Z",
+  "timeZone": "Asia/Kolkata",
+  "accessRole": "owner",
+  "defaultReminders": [{ "method": "popup", "minutes": 10 }],
+  "nextPageToken": "CigKGjVxMnI3a3FvMWJ2Nm8zZjBtM3BsNGFkOHRzGAEggICAkP6_s-8XGg0IABIAGNCt3pWT1YgD",
+  "items": [
+    {
+      "kind": "calendar#event",
+      "etag": "\"3452671234567000\"",
+      "id": "5q2r7kqo1bv6o3f0m3pl4ad8ts",
+      "status": "confirmed",
+      "htmlLink": "https://www.google.com/calendar/event?eid=NXEycjdrcW8xYnY2bzNmMG0zcGw0YWQ4dHMgYWxleEBjb21wYW55LmV4YW1wbGU",
+      "created": "2026-09-27T11:02:44.000Z",
+      "updated": "2026-09-28T09:41:12.482Z",
+      "summary": "Q3 roadmap review",
+      "description": "Agenda:<br>1. Walk through the slides<br>2. Agree owners &amp; dates",
+      "location": "Room 4B",
+      "creator": { "email": "priya@company.example", "displayName": "Priya Raman" },
+      "organizer": { "email": "priya@company.example", "displayName": "Priya Raman" },
+      "start": { "dateTime": "2026-10-01T10:00:00+05:30", "timeZone": "Asia/Kolkata" },
+      "end": { "dateTime": "2026-10-01T11:00:00+05:30", "timeZone": "Asia/Kolkata" },
+      "iCalUID": "5q2r7kqo1bv6o3f0m3pl4ad8ts@google.com",
+      "sequence": 0,
+      "attendees": [
+        {
+          "email": "priya@company.example",
+          "displayName": "Priya Raman",
+          "organizer": true,
+          "responseStatus": "accepted"
+        },
+        { "email": "alex@company.example", "self": true, "responseStatus": "needsAction" },
+        {
+          "email": "sam@company.example",
+          "displayName": "Sam Ortiz",
+          "responseStatus": "tentative"
+        }
+      ],
+      "hangoutLink": "https://meet.google.com/qwe-rtyu-iop",
+      "reminders": { "useDefault": true },
+      "eventType": "default"
+    },
+    {
+      "kind": "calendar#event",
+      "etag": "\"3452669876543000\"",
+      "id": "0c7hq3v1d2s9m1n6gk4b8r5a2u",
+      "status": "confirmed",
+      "htmlLink": "https://www.google.com/calendar/event?eid=MGM3aHEzdjFkMnM5bTFuNmdrNGI4cjVhMnUgYWxleEBjb21wYW55LmV4YW1wbGU",
+      "created": "2026-09-28T08:15:02.000Z",
+      "updated": "2026-09-28T08:15:02.911Z",
+      "summary": "1:1 Alex / Sam",
+      "creator": { "email": "alex@company.example", "self": true },
+      "organizer": { "email": "alex@company.example", "self": true },
+      "start": { "dateTime": "2026-09-30T16:30:00+05:30", "timeZone": "Asia/Kolkata" },
+      "end": { "dateTime": "2026-09-30T17:00:00+05:30", "timeZone": "Asia/Kolkata" },
+      "iCalUID": "0c7hq3v1d2s9m1n6gk4b8r5a2u@google.com",
+      "sequence": 0,
+      "attendees": [
+        {
+          "email": "alex@company.example",
+          "organizer": true,
+          "self": true,
+          "responseStatus": "accepted"
+        },
+        {
+          "email": "sam@company.example",
+          "displayName": "Sam Ortiz",
+          "responseStatus": "needsAction"
+        }
+      ],
+      "reminders": { "useDefault": true },
+      "eventType": "default"
+    }
+  ]
+}

@@ -100,6 +100,7 @@ describe('verifyWebhook', () => {
         {
           providerEventId: '13862519468213717',
           externalAccountId: 'alex@company.example',
+          source: 'mail',
           payload: {
             historyId: '1006',
             messageId: '13862519468213717',

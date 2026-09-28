@@ -1,0 +1,9 @@
+{
+  "x-goog-channel-id": "hubcal-9f1c2d3e4b5a69788796a5b4",
+  "x-goog-channel-token": "tok_calendar_fixture_secret_1",
+  "x-goog-channel-expiration": "Sat, 05 Oct 2026 10:32:41 GMT",
+  "x-goog-message-number": "226548",
+  "x-goog-resource-id": "o3hgv1538sdjfh7k2lxbe9",
+  "x-goog-resource-state": "exists",
+  "x-goog-resource-uri": "https://www.googleapis.com/calendar/v3/calendars/primary/events?alt=json"
+}

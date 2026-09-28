@@ -1,0 +1,83 @@
+{
+  "kind": "drive#changeList",
+  "nextPageToken": "8845",
+  "changes": [
+    {
+      "kind": "drive#change",
+      "changeType": "file",
+      "type": "file",
+      "time": "2026-09-28T07:12:40.311Z",
+      "removed": false,
+      "fileId": "1Q3pLanDeckAbCdEfGhIjKlMnOpQrStUvWxYz0123",
+      "file": {
+        "kind": "drive#file",
+        "id": "1Q3pLanDeckAbCdEfGhIjKlMnOpQrStUvWxYz0123",
+        "name": "Q3 roadmap (draft)",
+        "mimeType": "application/vnd.google-apps.presentation",
+        "webViewLink": "https://docs.google.com/presentation/d/1Q3pLanDeckAbCdEfGhIjKlMnOpQrStUvWxYz0123/edit?usp=drivesdk",
+        "iconLink": "https://drive-thirdparty.googleusercontent.com/16/type/application/vnd.google-apps.presentation",
+        "createdTime": "2026-09-25T10:00:00.000Z",
+        "modifiedTime": "2026-09-27T18:03:11.000Z",
+        "sharedWithMeTime": "2026-09-28T07:12:40.311Z",
+        "sharingUser": {
+          "kind": "drive#user",
+          "displayName": "Priya Raman",
+          "me": false,
+          "emailAddress": "priya@company.example"
+        },
+        "lastModifyingUser": {
+          "kind": "drive#user",
+          "displayName": "Priya Raman",
+          "me": false,
+          "emailAddress": "priya@company.example"
+        },
+        "owners": [
+          {
+            "kind": "drive#user",
+            "displayName": "Priya Raman",
+            "me": false,
+            "emailAddress": "priya@company.example"
+          }
+        ],
+        "ownedByMe": false,
+        "shared": true,
+        "trashed": false
+      }
+    },
+    {
+      "kind": "drive#change",
+      "changeType": "file",
+      "type": "file",
+      "time": "2026-09-28T09:20:05.004Z",
+      "removed": false,
+      "fileId": "1BudGetSheetZyXwVuTsRqPoNmLkJiHgFeDcBa98765",
+      "file": {
+        "kind": "drive#file",
+        "id": "1BudGetSheetZyXwVuTsRqPoNmLkJiHgFeDcBa98765",
+        "name": "FY27 budget",
+        "mimeType": "application/vnd.google-apps.spreadsheet",
+        "webViewLink": "https://docs.google.com/spreadsheets/d/1BudGetSheetZyXwVuTsRqPoNmLkJiHgFeDcBa98765/edit?usp=drivesdk",
+        "iconLink": "https://drive-thirdparty.googleusercontent.com/16/type/application/vnd.google-apps.spreadsheet",
+        "createdTime": "2026-08-02T04:30:00.000Z",
+        "modifiedTime": "2026-09-28T09:20:04.000Z",
+        "lastModifyingUser": {
+          "kind": "drive#user",
+          "displayName": "Sam Ortiz",
+          "me": false,
+          "emailAddress": "sam@company.example"
+        },
+        "owners": [
+          {
+            "kind": "drive#user",
+            "displayName": "Alex Chen",
+            "me": true,
+            "emailAddress": "alex@company.example"
+          }
+        ],
+        "ownedByMe": true,
+        "shared": true,
+        "trashed": false
+      }
+    }
+  ]
+}

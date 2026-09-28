@@ -1,10 +1,11 @@
 import { randomBytes } from 'node:crypto';
-import type { OAuthTokens } from '../types';
+import type { Identity, OAuthTokens } from '../types';
 import type { GmailApi, GmailClientFactory, GmailMessage } from './client';
 import { GMAIL_SCOPES } from './config';
 import type { FakeGmailStore, FakeMailbox } from './fake-store';
 import { fixture } from './fixtures/index';
 import { header } from './normalize';
+import { GOOGLE_SOURCES, SOURCE_SCOPES, type GoogleSource } from './scopes';
 
 /** Error shaped like a gaxios error, so the real error mapping applies to the fake too. */
 export class FakeHttpError extends Error {
@@ -17,9 +18,9 @@ export class FakeHttpError extends Error {
   }
 }
 
-const notFound = () => new FakeHttpError(404, fixture('history-404.json'));
-const unauthorized = () => new FakeHttpError(401, fixture('error-401.json'));
-const invalidGrant = () => new FakeHttpError(400, fixture('token-invalid-grant.json'));
+export const notFound = () => new FakeHttpError(404, fixture('history-404.json'));
+export const unauthorized = () => new FakeHttpError(401, fixture('error-401.json'));
+export const invalidGrant = () => new FakeHttpError(400, fixture('token-invalid-grant.json'));
 
 const LABEL_FOR: Record<string, string> = {
   inbox: 'INBOX',
@@ -101,6 +102,37 @@ export type FakeClientOptions = {
   now?: () => number;
 };
 
+/**
+ * Token checks shared by the fake Gmail and fake REST clients: unknown mailbox or a
+ * non-fake token → 401, revoked grant → invalid_grant, expired → refresh + onTokens.
+ */
+export function fakeAuthGuard(
+  store: FakeGmailStore,
+  externalId: string,
+  tokens: OAuthTokens,
+  onTokens: (t: OAuthTokens) => void,
+  now: () => number,
+): () => FakeMailbox {
+  const email = externalId.toLowerCase();
+  let current: OAuthTokens = { ...tokens };
+  return () => {
+    const mb = store.mailbox(email);
+    if (!mb) throw unauthorized();
+    if (mb.revoked) throw invalidGrant();
+    if (!current.accessToken?.startsWith('fake-')) throw unauthorized();
+    if (current.expiresAt !== undefined && current.expiresAt <= now()) {
+      if (!current.refreshToken?.startsWith('fake-')) throw invalidGrant();
+      current = {
+        ...current,
+        accessToken: `fake-access.${randomBytes(6).toString('hex')}`,
+        expiresAt: now() + 3600_000,
+      };
+      onTokens({ ...current });
+    }
+    return mb;
+  };
+}
+
 /** A GmailApi served from the fake store. Enforces tokens like Google would. */
 export function fakeClientFactory(
   store: FakeGmailStore,
@@ -109,24 +141,7 @@ export function fakeClientFactory(
   const now = opts.now ?? Date.now;
   return ({ tokens, externalId, onTokens }) => {
     const email = externalId.toLowerCase();
-    let current: OAuthTokens = { ...tokens };
-
-    function auth(): FakeMailbox {
-      const mb = store.mailbox(email);
-      if (!mb) throw unauthorized();
-      if (mb.revoked) throw invalidGrant();
-      if (!current.accessToken?.startsWith('fake-')) throw unauthorized();
-      if (current.expiresAt !== undefined && current.expiresAt <= now()) {
-        if (!current.refreshToken?.startsWith('fake-')) throw invalidGrant();
-        current = {
-          ...current,
-          accessToken: `fake-access.${randomBytes(6).toString('hex')}`,
-          expiresAt: now() + 3600_000,
-        };
-        onTokens({ ...current });
-      }
-      return mb;
-    }
+    const auth = fakeAuthGuard(store, email, tokens, onTokens, now);
 
     const api: GmailApi = {
       async getProfile() {
@@ -216,7 +231,11 @@ export function fakeClientFactory(
   };
 }
 
-/** Fake OAuth: the consent screen "signs in" as one of the fake mailboxes. */
+/**
+ * Fake OAuth: the consent screen "signs in" as one of the fake mailboxes. The code is
+ * `fake:<email>` (every read scope), `fake:<email>|mail,calendar` (the user unticked the
+ * other sources) or `fake-write:<email>` (gmail.send).
+ */
 export function fakeAuth(store: FakeGmailStore) {
   return {
     authUrl(opts: {
@@ -232,7 +251,7 @@ export function fakeAuth(store: FakeGmailStore) {
       return url.toString();
     },
     async exchange(code: string) {
-      const m = /^(fake|fake-write):(.+)$/.exec(code);
+      const m = /^(fake|fake-write):([^|]+)(?:\|([a-z,]*))?$/.exec(code);
       if (!m) throw new FakeHttpError(400, { error: 'invalid_grant' });
       const email = m[2]!.toLowerCase();
       const mb = store.mailbox(email);
@@ -240,8 +259,11 @@ export function fakeAuth(store: FakeGmailStore) {
       // A fresh consent un-revokes the fake grant (the "reconnect" flow).
       if (mb.revoked) store.setRevoked(email, false);
       const write = m[1] === 'fake-write';
+      const sources = (m[3] ?? GOOGLE_SOURCES.join(','))
+        .split(',')
+        .filter((x): x is GoogleSource => (GOOGLE_SOURCES as readonly string[]).includes(x));
       const scope = [
-        write ? GMAIL_SCOPES.send : GMAIL_SCOPES.readonly,
+        ...(write ? [GMAIL_SCOPES.send] : sources.flatMap((x) => SOURCE_SCOPES[x])),
         GMAIL_SCOPES.openid,
         GMAIL_SCOPES.userinfoEmail,
       ].join(' ');
@@ -251,7 +273,22 @@ export function fakeAuth(store: FakeGmailStore) {
         expiresAt: Date.now() + 3600_000,
         scope,
       };
-      return { tokens, externalId: mb.email, displayName: mb.displayName };
+      const identity: Identity = {
+        externalId: mb.email,
+        displayName: mb.displayName,
+        routeKeys: [mb.email],
+        meta: {
+          grantedScopes: scope.split(' '),
+          ...(mb.google ? { googleUserId: mb.google.googleUserId } : {}),
+          ...(mb.google?.workspace ? { hostedDomain: mb.email.split('@')[1] } : {}),
+        },
+      };
+      return {
+        tokens,
+        externalId: mb.email,
+        displayName: mb.displayName,
+        identities: [identity],
+      };
     },
   };
 }

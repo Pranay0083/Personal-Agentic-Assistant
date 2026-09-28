@@ -1,0 +1,18 @@
+{
+  "subscriptions": [
+    {
+      "name": "subscriptions/chat-spaces-czpbbTI1Y2Z0NjAw",
+      "uid": "4f7a8d8f-6d1e-4a30-9a55-2b3c4d5e6f70",
+      "targetResource": "//chat.googleapis.com/spaces/-",
+      "eventTypes": ["google.workspace.chat.message.v1.created"],
+      "payloadOptions": {},
+      "notificationEndpoint": { "pubsubTopic": "projects/hub-dev/topics/workspace-events" },
+      "state": "ACTIVE",
+      "authority": "users/108234567890123456789",
+      "createTime": "2026-09-21T10:32:41.123456Z",
+      "updateTime": "2026-09-21T10:32:41.123456Z",
+      "expireTime": "2026-09-28T22:32:41.123456Z",
+      "etag": "\"z9y8x7\""
+    }
+  ]
+}

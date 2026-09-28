@@ -1,0 +1,81 @@
+{
+  "kind": "drive#changeList",
+  "newStartPageToken": "8851",
+  "changes": [
+    {
+      "kind": "drive#change",
+      "changeType": "file",
+      "type": "file",
+      "time": "2026-09-28T09:31:00.500Z",
+      "removed": false,
+      "fileId": "1MyNotesDocQwErTyUiOpAsDfGhJkLzXcVbNm4567",
+      "file": {
+        "kind": "drive#file",
+        "id": "1MyNotesDocQwErTyUiOpAsDfGhJkLzXcVbNm4567",
+        "name": "My notes",
+        "mimeType": "application/vnd.google-apps.document",
+        "webViewLink": "https://docs.google.com/document/d/1MyNotesDocQwErTyUiOpAsDfGhJkLzXcVbNm4567/edit?usp=drivesdk",
+        "createdTime": "2026-09-01T04:30:00.000Z",
+        "modifiedTime": "2026-09-28T09:31:00.000Z",
+        "lastModifyingUser": {
+          "kind": "drive#user",
+          "displayName": "Alex Chen",
+          "me": true,
+          "emailAddress": "alex@company.example"
+        },
+        "owners": [
+          {
+            "kind": "drive#user",
+            "displayName": "Alex Chen",
+            "me": true,
+            "emailAddress": "alex@company.example"
+          }
+        ],
+        "ownedByMe": true,
+        "shared": false,
+        "trashed": false
+      }
+    },
+    {
+      "kind": "drive#change",
+      "changeType": "file",
+      "type": "file",
+      "time": "2026-09-28T09:33:10.000Z",
+      "removed": true,
+      "fileId": "1GoneFileAaBbCcDdEeFfGgHhIiJjKkLlMmNn0000"
+    },
+    {
+      "kind": "drive#change",
+      "changeType": "file",
+      "type": "file",
+      "time": "2026-09-28T09:35:42.000Z",
+      "removed": false,
+      "fileId": "1TrashedPdfPpQqRrSsTtUuVvWwXxYyZz11112222",
+      "file": {
+        "kind": "drive#file",
+        "id": "1TrashedPdfPpQqRrSsTtUuVvWwXxYyZz11112222",
+        "name": "old-contract.pdf",
+        "mimeType": "application/pdf",
+        "webViewLink": "https://drive.google.com/file/d/1TrashedPdfPpQqRrSsTtUuVvWwXxYyZz11112222/view?usp=drivesdk",
+        "modifiedTime": "2026-09-28T09:35:40.000Z",
+        "lastModifyingUser": {
+          "kind": "drive#user",
+          "displayName": "Sam Ortiz",
+          "me": false,
+          "emailAddress": "sam@company.example"
+        },
+        "owners": [
+          {
+            "kind": "drive#user",
+            "displayName": "Sam Ortiz",
+            "me": false,
+            "emailAddress": "sam@company.example"
+          }
+        ],
+        "ownedByMe": false,
+        "shared": true,
+        "trashed": true
+      }
+    }
+  ]
+}

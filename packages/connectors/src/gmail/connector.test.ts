@@ -3,11 +3,16 @@ import { AccountFilters } from '@hub/shared';
 import { ReconnectRequiredError, RetryableError } from '../errors';
 import type { ConnectorContext, OAuthTokens } from '../types';
 import type { GmailApi, GmailMessage } from './client';
+import type { GmailRecord } from './normalize';
+import type { GoogleRecord } from './records';
 import { createGmailConnector } from './connector';
 import { FakeHttpError } from './fake';
 import { FakeGmailStore } from './fake-store';
 import { fixture } from './fixtures/index';
 import { messageIdFor } from './mime';
+
+/** Mail-source records (the connector's record type is the union of all sources). */
+const mail = (r: GoogleRecord) => r as GmailRecord;
 
 const WORK = 'alex@company.example';
 const PERSONAL = 'alex.personal@gmail.example';
@@ -21,6 +26,7 @@ function ctxFor(externalId: string, tokens: OAuthTokens, cursor: string | null =
     saveTokens: async (t) => {
       saved.push(t);
     },
+    source: 'mail',
     cursor,
     filters: AccountFilters.parse({}),
   };
@@ -80,12 +86,12 @@ describe('gmail connector with recorded fixtures', () => {
     expect(calls).toEqual([undefined, '07081928374651']);
     expect(delta.cursor).toBe('1005');
     expect(delta.fullResyncRequired).toBeUndefined();
-    expect(delta.records.map((r) => r.message.id)).toEqual([
+    expect(delta.records.map((r) => mail(r).message.id)).toEqual([
       '192a7c3e5b1d0a01',
       '192a7c3e5b1d0a02',
       '192a7c3e5b1d0a03',
     ]);
-    expect(delta.records.every((r) => r.accountEmail === WORK)).toBe(true);
+    expect(delta.records.every((r) => mail(r).accountEmail === WORK)).toBe(true);
   });
 
   it('returns fullResyncRequired with a fresh cursor when history is too old (404)', async () => {
@@ -113,7 +119,7 @@ describe('gmail connector with recorded fixtures', () => {
     });
     const c = createGmailConnector({ config: { fake: false }, clientFactory: () => api });
     const delta = await c.fetchDelta(ctxFor(WORK, tokens(), '1000').ctx);
-    expect(delta.records.map((r) => r.message.id)).toEqual(['192a7c3e5b1d0a02']);
+    expect(delta.records.map((r) => mail(r).message.id)).toEqual(['192a7c3e5b1d0a02']);
   });
 
   it('maps 401 and invalid_grant to ReconnectRequiredError, 429/5xx to RetryableError', async () => {
@@ -157,7 +163,10 @@ describe('gmail connector with recorded fixtures', () => {
     const c = createGmailConnector({ config: { fake: false }, clientFactory: () => api });
     const { ctx } = ctxFor(WORK, tokens());
     const p1 = await c.backfill(ctx, { days: 30 });
-    expect(p1.records.map((r) => r.message.id)).toEqual(['192a7c3e5b1d0a04', '192a7c3e5b1d0a03']);
+    expect(p1.records.map((r) => mail(r).message.id)).toEqual([
+      '192a7c3e5b1d0a04',
+      '192a7c3e5b1d0a03',
+    ]);
     expect(p1.nextPageToken).toBe('13977562894183526071');
     const p2 = await c.backfill(ctx, { days: 30, pageToken: p1.nextPageToken! });
     expect(p2.nextPageToken).toBeNull();
@@ -332,7 +341,7 @@ describe('gmail connector in fake mode', () => {
     const { ctx } = ctxFor(PERSONAL, t);
     ctx.filters = { ...ctx.filters, promotions: true };
     const week = await c.backfill(ctx, { days: 7 });
-    expect(week.records.map((r) => r.message.id)).not.toContain(undefined);
+    expect(week.records.map((r) => mail(r).message.id)).not.toContain(undefined);
     expect(week.records).toHaveLength(3);
     const month = await c.backfill(ctx, { days: 30 });
     expect(month.records).toHaveLength(4);

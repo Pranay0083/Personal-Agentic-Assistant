@@ -30,6 +30,7 @@ describe('normalizeGmail', () => {
     expect(item.receivedAt.toISOString()).toBe(new Date(1790586761000).toISOString());
     expect(item.labels).toContain('INBOX');
     expect(item.labels).toContain('rfc822msgid:<CAF=q3roadmap.1@mail.company.example>');
+    expect(item.labels).not.toContain('hub:from_me');
   });
 
   it('omits a malformed Message-ID instead of storing it', () => {
@@ -54,6 +55,7 @@ describe('normalizeGmail', () => {
   it('sets fromMe for SENT mail and decodes snippet entities', () => {
     const item = normalizeGmail(rec('message-sent.json'))!;
     expect(item.fromMe).toBe(true);
+    expect(item.labels).toContain('hub:from_me');
     expect(item.authorAddress).toBe('alex@company.example');
     expect(item.summary).toBe(
       "Hi Morgan, I'll get you the signed MSA by end of day Wednesday. Alex",

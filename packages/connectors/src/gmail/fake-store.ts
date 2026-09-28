@@ -10,6 +10,16 @@ import {
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import type { GmailMessage } from './client';
+import {
+  addCalendarEvent,
+  addChatMessage,
+  seedFakeGoogle,
+  shareDriveFile,
+  type FakeGoogle,
+  type NewFakeCalendarEvent,
+  type NewFakeChatMessage,
+  type NewFakeDriveShare,
+} from './fake-google-store';
 import { fixture } from './fixtures/index';
 
 /**
@@ -36,6 +46,8 @@ export type FakeMailbox = {
   watch: { expiration: number; labelIds: string[] } | null;
   /** Simulates a revoked grant: every call fails with invalid_grant. */
   revoked: boolean;
+  /** Calendar, Drive and Chat data (added in Phase 5; filled in lazily for older stores). */
+  google?: FakeGoogle;
 };
 
 export type FakeState = {
@@ -78,9 +90,22 @@ export function seedFakeState(now = Date.now()): FakeState {
       history: [],
       watch: null,
       revoked: false,
+      google: seedFakeGoogle(mb.email, now),
     };
   }
   return { version: 1, connectCounter: 0, mailboxes };
+}
+
+/** Stores written before Phase 5 have no Google data: seed it on first read. */
+function ensureGoogle(s: FakeState): boolean {
+  let changed = false;
+  for (const mb of Object.values(s.mailboxes)) {
+    if (!mb.google) {
+      mb.google = seedFakeGoogle(mb.email);
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 interface Persistence {
@@ -178,12 +203,15 @@ export class FakeGmailStore {
 
   /** Current state (seeded from fixtures on first use). */
   read(): FakeState {
-    return this.p.read() ?? this.update((s) => s);
+    const s = this.p.read();
+    if (!s || Object.values(s.mailboxes).some((mb) => !mb.google)) return this.update((x) => x);
+    return s;
   }
 
   update<T>(fn: (s: FakeState) => T): T {
     return this.p.withLock(() => {
       const s = this.p.read() ?? seedFakeState();
+      ensureGoogle(s);
       const out = fn(s);
       this.p.write(s);
       return out;
@@ -225,6 +253,58 @@ export class FakeGmailStore {
         mb.historyId += 1;
         mb.minHistoryId = mb.historyId;
       }
+    });
+  }
+
+  /** A mailbox's Google Workspace data (read-only view). */
+  google(email: string): FakeGoogle | undefined {
+    return this.mailbox(email)?.google;
+  }
+
+  /** Runs `fn` on a mailbox's Google data under the store lock and saves it. */
+  updateGoogle<T>(email: string, fn: (g: FakeGoogle, mb: FakeMailbox) => T): T {
+    return this.update((s) => {
+      const mb = s.mailboxes[email.toLowerCase()];
+      if (!mb?.google) throw new Error(`fake google: no mailbox ${email}`);
+      return fn(mb.google, mb);
+    });
+  }
+
+  /** A calendar invite (or own event) on the primary calendar. */
+  addCalendarEvent(email: string, input: NewFakeCalendarEvent) {
+    return this.updateGoogle(email, (g, mb) => addCalendarEvent(g, mb.email, input));
+  }
+
+  /** Someone shares a Drive file with the mailbox owner. */
+  shareDriveFile(email: string, input: NewFakeDriveShare) {
+    return this.updateGoogle(email, (g) => shareDriveFile(g, input));
+  }
+
+  /** A Google Chat message in one of the owner's spaces. */
+  addChatMessage(email: string, input: NewFakeChatMessage) {
+    return this.updateGoogle(email, (g) => addChatMessage(g, input));
+  }
+
+  /** Invalidates every Calendar sync token (events.list answers 410). */
+  expireCalendarSync(email: string) {
+    this.updateGoogle(email, (g) => {
+      g.calendar.seq += 1;
+      g.calendar.minSeq = g.calendar.seq;
+    });
+  }
+
+  /** Invalidates every Drive page token (changes.list answers 404). */
+  expireDriveChanges(email: string) {
+    this.updateGoogle(email, (g) => {
+      g.drive.seq += 1;
+      g.drive.minSeq = g.drive.seq;
+    });
+  }
+
+  /** Workspace (Chat available) vs consumer account. */
+  setWorkspace(email: string, workspace: boolean) {
+    this.updateGoogle(email, (g) => {
+      g.workspace = workspace;
     });
   }
 

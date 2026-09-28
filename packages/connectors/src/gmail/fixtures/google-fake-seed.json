@@ -1,0 +1,21 @@
+{
+  "recordedAt": "2026-09-28T10:00:00.000Z",
+  "accounts": {
+    "alex@company.example": {
+      "googleUserId": "108234567890123456789",
+      "workspace": true,
+      "calendar": ["calendar-events-page-1.json", "calendar-events-page-2.json"],
+      "drive": ["drive-changes-page-1.json"],
+      "chatSpaces": "chat-spaces.json",
+      "chatMessages": ["chat-messages-space.json", "chat-messages-dm.json"]
+    },
+    "alex.personal@gmail.example": {
+      "googleUserId": "117766554433221100998",
+      "workspace": false,
+      "calendar": [],
+      "drive": [],
+      "chatSpaces": null,
+      "chatMessages": []
+    }
+  }
+}

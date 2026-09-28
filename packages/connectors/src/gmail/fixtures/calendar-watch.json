@@ -1,0 +1,8 @@
+{
+  "kind": "api#channel",
+  "id": "hubcal-9f1c2d3e4b5a69788796a5b4",
+  "resourceId": "o3hgv1538sdjfh7k2lxbe9",
+  "resourceUri": "https://www.googleapis.com/calendar/v3/calendars/primary/events?alt=json",
+  "token": "echoed",
+  "expiration": "1791796361000"
+}

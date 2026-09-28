@@ -1,0 +1,36 @@
+{
+  "messages": [
+    {
+      "name": "spaces/AAAAq3Lk0aE/messages/Zx1Qm3pL0aE.Zx1Qm3pL0aE",
+      "sender": { "name": "users/112233445566778899001", "type": "HUMAN" },
+      "createTime": "2026-09-28T09:01:02.123456Z",
+      "text": "@Alex can you own the launch checklist? Need it by Wednesday.",
+      "formattedText": "<users/108234567890123456789> can you own the launch checklist? Need it by Wednesday.",
+      "annotations": [
+        {
+          "type": "USER_MENTION",
+          "startIndex": 0,
+          "length": 5,
+          "userMention": {
+            "user": { "name": "users/108234567890123456789", "type": "HUMAN" },
+            "type": "MENTION"
+          }
+        }
+      ],
+      "thread": { "name": "spaces/AAAAq3Lk0aE/threads/Zx1Qm3pL0aE" },
+      "space": { "name": "spaces/AAAAq3Lk0aE" },
+      "argumentText": "@Alex can you own the launch checklist? Need it by Wednesday."
+    },
+    {
+      "name": "spaces/AAAAq3Lk0aE/messages/Yy2Rn4qM1bF.Zx1Qm3pL0aE",
+      "sender": { "name": "users/108234567890123456789", "type": "HUMAN" },
+      "createTime": "2026-09-28T09:05:12.345678Z",
+      "text": "Yes, on it.",
+      "formattedText": "Yes, on it.",
+      "thread": { "name": "spaces/AAAAq3Lk0aE/threads/Zx1Qm3pL0aE" },
+      "space": { "name": "spaces/AAAAq3Lk0aE" },
+      "argumentText": "Yes, on it.",
+      "threadReply": true
+    }
+  ]
+}
