@@ -265,6 +265,9 @@ importers:
       '@hub/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@hub/models':
+        specifier: workspace:*
+        version: link:../../packages/models
       '@hub/policy':
         specifier: workspace:*
         version: link:../../packages/policy
