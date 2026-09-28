@@ -1,0 +1,39 @@
+{
+  "value": [
+    {
+      "subscriptionId": "7f105c7d-2dc5-4530-97cd-4e7ae6534c07",
+      "subscriptionExpirationDateTime": "2026-10-05T09:45:00+00:00",
+      "changeType": "created",
+      "resource": "Users/6b1f3c2a-9d4e-4f7a-8c1b-2e3d4f5a6b7c/Messages/AAkALgAAAAAAHYQDEapmEc2byACqAC-EWg0AIiLKjG2I7E-Xvk-ys6MD0wAAMf9ItAAA",
+      "resourceData": {
+        "@odata.type": "#Microsoft.Graph.Message",
+        "@odata.id": "Users/6b1f3c2a-9d4e-4f7a-8c1b-2e3d4f5a6b7c/Messages/AAkALgAAAAAAHYQDEapmEc2byACqAC-EWg0AIiLKjG2I7E-Xvk-ys6MD0wAAMf9ItAAA",
+        "@odata.etag": "W/\"CQAAABYAAAAiIsqMbYjsT5e/T7KzowPTAAAx1VaO\"",
+        "id": "AAkALgAAAAAAHYQDEapmEc2byACqAC-EWg0AIiLKjG2I7E-Xvk-ys6MD0wAAMf9ItAAA"
+      },
+      "clientState": "q1w2e3r4t5y6u7i8o9p0q1w2e3r4t5y6",
+      "tenantId": "2f8e4b1c-7a3d-4e9f-b6c5-1d2e3f4a5b6c"
+    },
+    {
+      "subscriptionId": "a3c1f2e4-0000-4000-8000-00000000c4a7",
+      "subscriptionExpirationDateTime": "2026-10-01T09:45:00+00:00",
+      "changeType": "created",
+      "resource": "chats('19:6b1f3c2a-9d4e-4f7a-8c1b-2e3d4f5a6b7c_9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d@unq.gbl.spaces')/messages('1790587800000')",
+      "resourceData": {
+        "id": "1790587800000",
+        "@odata.type": "#Microsoft.Graph.chatMessage",
+        "@odata.id": "chats('19:6b1f3c2a-9d4e-4f7a-8c1b-2e3d4f5a6b7c_9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d@unq.gbl.spaces')/messages('1790587800000')"
+      },
+      "clientState": "z9x8c7v6b5n4m3z9x8c7v6b5n4m3",
+      "tenantId": "2f8e4b1c-7a3d-4e9f-b6c5-1d2e3f4a5b6c"
+    },
+    {
+      "subscriptionId": "d7e6f5a4-0000-4000-8000-0000000d71fe",
+      "subscriptionExpirationDateTime": "2026-10-27T09:45:00+00:00",
+      "changeType": "updated",
+      "resource": "/me/drive/root",
+      "clientState": "d1r2i3v4e5d1r2i3v4e5",
+      "tenantId": "2f8e4b1c-7a3d-4e9f-b6c5-1d2e3f4a5b6c"
+    }
+  ]
+}

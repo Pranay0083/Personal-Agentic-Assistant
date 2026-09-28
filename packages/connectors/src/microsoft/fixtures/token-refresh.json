@@ -1,0 +1,8 @@
+{
+  "token_type": "Bearer",
+  "scope": "Calendars.Read Chat.Read Files.Read Mail.Read User.Read openid profile email",
+  "expires_in": 3599,
+  "ext_expires_in": 3599,
+  "access_token": "fixture-access-refreshed",
+  "refresh_token": "0.AXkAfixture-refresh-rotated"
+}

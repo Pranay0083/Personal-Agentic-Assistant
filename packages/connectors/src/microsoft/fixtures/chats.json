@@ -1,0 +1,64 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#chats(lastMessagePreview())",
+  "@odata.count": 2,
+  "value": [
+    {
+      "id": "19:6b1f3c2a-9d4e-4f7a-8c1b-2e3d4f5a6b7c_9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d@unq.gbl.spaces",
+      "topic": null,
+      "createdDateTime": "2026-01-12T09:00:00.000Z",
+      "lastUpdatedDateTime": "2026-09-28T09:30:00.000Z",
+      "chatType": "oneOnOne",
+      "webUrl": "https://teams.microsoft.com/l/chat/19%3A6b1f3c2a-9d4e-4f7a-8c1b-2e3d4f5a6b7c_9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d%40unq.gbl.spaces/0?tenantId=2f8e4b1c-7a3d-4e9f-b6c5-1d2e3f4a5b6c",
+      "tenantId": "2f8e4b1c-7a3d-4e9f-b6c5-1d2e3f4a5b6c",
+      "onlineMeetingInfo": null,
+      "viewpoint": { "isHidden": false, "lastMessageReadDateTime": "2026-09-28T08:00:00.000Z" },
+      "lastMessagePreview@odata.context": "https://graph.microsoft.com/v1.0/$metadata#chats('19%3A6b1f')/lastMessagePreview/$entity",
+      "lastMessagePreview": {
+        "id": "1790587800000",
+        "createdDateTime": "2026-09-28T09:30:00.000Z",
+        "isDeleted": false,
+        "messageType": "message",
+        "eventDetail": null,
+        "body": { "contentType": "text", "content": "Can you review the pricing slide?" },
+        "from": {
+          "application": null,
+          "device": null,
+          "user": {
+            "id": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+            "displayName": "Priya Raman",
+            "userIdentityType": "aadUser",
+            "tenantId": "2f8e4b1c-7a3d-4e9f-b6c5-1d2e3f4a5b6c"
+          }
+        }
+      }
+    },
+    {
+      "id": "19:3c5d7e9f1a2b4c6d8e0f@thread.v2",
+      "topic": "Launch crew",
+      "createdDateTime": "2026-02-02T09:00:00.000Z",
+      "lastUpdatedDateTime": "2026-09-20T11:00:00.000Z",
+      "chatType": "group",
+      "webUrl": "https://teams.microsoft.com/l/chat/19%3A3c5d7e9f1a2b4c6d8e0f%40thread.v2/0?tenantId=2f8e4b1c-7a3d-4e9f-b6c5-1d2e3f4a5b6c",
+      "tenantId": "2f8e4b1c-7a3d-4e9f-b6c5-1d2e3f4a5b6c",
+      "onlineMeetingInfo": null,
+      "viewpoint": { "isHidden": false, "lastMessageReadDateTime": "2026-09-20T11:00:00.000Z" },
+      "lastMessagePreview": {
+        "id": "1789902000000",
+        "createdDateTime": "2026-09-20T11:00:00.000Z",
+        "isDeleted": false,
+        "messageType": "message",
+        "eventDetail": null,
+        "body": { "contentType": "text", "content": "old" },
+        "from": {
+          "application": null,
+          "device": null,
+          "user": {
+            "id": "4d3c2b1a-0f9e-4d8c-a7b6-5e4d3c2b1a0f",
+            "displayName": "Jordan Lee",
+            "userIdentityType": "aadUser"
+          }
+        }
+      }
+    }
+  ]
+}

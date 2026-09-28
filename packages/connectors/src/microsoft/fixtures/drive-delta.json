@@ -1,0 +1,64 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#Collection(driveItem)",
+  "@odata.deltaLink": "https://graph.microsoft.com/v1.0/me/drive/root/delta?token=MzslMjM0OyUyMzE7Mzs3ZmFrZS1maXh0dXJlLW5leHQ",
+  "value": [
+    {
+      "@odata.type": "#microsoft.graph.driveItem",
+      "id": "01BYE5RZ56Y2GOVW7725BZO354PWSELRRZ",
+      "name": "root",
+      "root": {},
+      "folder": { "childCount": 12 },
+      "parentReference": { "driveId": "b!fixture-drive", "driveType": "business" }
+    },
+    {
+      "@odata.type": "#microsoft.graph.driveItem",
+      "id": "01BYE5RZ6QN3ZWBTUFOFD3GSPGOHDJD36K",
+      "name": "Board",
+      "folder": { "childCount": 3 },
+      "parentReference": {
+        "driveId": "b!fixture-drive",
+        "id": "01BYE5RZ56Y2GOVW7725BZO354PWSELRRZ",
+        "path": "/drive/root:"
+      }
+    },
+    {
+      "@odata.type": "#microsoft.graph.driveItem",
+      "id": "01BYE5RZ4CPC5XBOTZCFD2CT7SWFFS4IHC",
+      "name": "Q3 Board Deck.pptx",
+      "webUrl": "https://contoso-my.sharepoint.example/personal/avery_contoso_example/Documents/Board/Q3%20Board%20Deck.pptx",
+      "size": 482113,
+      "createdDateTime": "2026-09-01T12:00:00Z",
+      "lastModifiedDateTime": "2026-09-28T08:40:00Z",
+      "file": {
+        "mimeType": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "hashes": { "quickXorHash": "fixtureHash=" }
+      },
+      "parentReference": {
+        "driveId": "b!fixture-drive",
+        "driveType": "business",
+        "id": "01BYE5RZ6QN3ZWBTUFOFD3GSPGOHDJD36K",
+        "path": "/drive/root:/Board"
+      },
+      "createdBy": {
+        "user": {
+          "id": "6b1f3c2a-9d4e-4f7a-8c1b-2e3d4f5a6b7c",
+          "displayName": "Avery Chen",
+          "email": "avery.chen@contoso.example"
+        }
+      },
+      "lastModifiedBy": {
+        "user": {
+          "id": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+          "displayName": "Priya Raman",
+          "email": "priya.raman@contoso.example"
+        }
+      }
+    },
+    {
+      "@odata.type": "#microsoft.graph.driveItem",
+      "id": "01BYE5RZDELETEDFIXTUREITEM000000",
+      "deleted": { "state": "deleted" },
+      "parentReference": { "driveId": "b!fixture-drive" }
+    }
+  ]
+}

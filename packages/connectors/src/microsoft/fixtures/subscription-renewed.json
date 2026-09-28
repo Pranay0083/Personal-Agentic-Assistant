@@ -1,0 +1,13 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#subscriptions/$entity",
+  "id": "7f105c7d-2dc5-4530-97cd-4e7ae6534c07",
+  "resource": "/me/messages",
+  "applicationId": "00000000-1111-2222-3333-444444444444",
+  "changeType": "created",
+  "clientState": null,
+  "notificationUrl": "https://hub.example/hooks/microsoft",
+  "lifecycleNotificationUrl": "https://hub.example/hooks/microsoft",
+  "expirationDateTime": "2026-10-12T09:45:00Z",
+  "creatorId": "6b1f3c2a-9d4e-4f7a-8c1b-2e3d4f5a6b7c",
+  "latestSupportedTlsVersion": "v1_2"
+}

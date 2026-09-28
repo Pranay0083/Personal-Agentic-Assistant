@@ -1,0 +1,31 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#Collection(message)",
+  "@odata.deltaLink": "https://graph.microsoft.com/v1.0/me/mailFolders/sentitems/messages/delta?$deltatoken=SentFixtureDeltaToken_7fvKxYPS_67JnEYmfQQMPccy6FRun0DWJF5775",
+  "value": [
+    {
+      "@odata.type": "#microsoft.graph.message",
+      "id": "AAkALgAAAAAAHYQDEapmEc2byACqAC-EWg0AIiLKjG2I7E-Xvk-ys6MD0wAAMf9ItSENT",
+      "subject": "RE: Offsite agenda",
+      "bodyPreview": "Looks good to me.",
+      "body": { "contentType": "text", "content": "Looks good to me." },
+      "from": { "emailAddress": { "name": "Avery Chen", "address": "avery.chen@contoso.example" } },
+      "sender": {
+        "emailAddress": { "name": "Avery Chen", "address": "avery.chen@contoso.example" }
+      },
+      "toRecipients": [
+        { "emailAddress": { "name": "Sam Okafor", "address": "sam.okafor@contoso.example" } }
+      ],
+      "ccRecipients": [],
+      "receivedDateTime": "2026-09-28T07:30:00Z",
+      "sentDateTime": "2026-09-28T07:30:00Z",
+      "conversationId": "AAQkAGI2TGuLAAAQAQAMfixtureConv3",
+      "internetMessageId": "<SN6PR01MB9999SENT@SN6PR01MB9999.prod.outlook.example>",
+      "webLink": "https://outlook.office365.com/owa/?ItemID=AAkALgAAAAAAHYQDEapmEc2byACqAC%2FEWg0AIiLKjG2I7E%2BXvk%2Bys6MD0wAAMf9ItSENT&exvsurl=1&viewmodel=ReadMessageItem",
+      "parentFolderId": "AQMkADAwATM0MDAAMS1iNTcwLWI2NTEtMDACLTAwCgAuAAADkjbpfixtureSent",
+      "isDraft": false,
+      "categories": [],
+      "inferenceClassification": "focused",
+      "importance": "normal"
+    }
+  ]
+}

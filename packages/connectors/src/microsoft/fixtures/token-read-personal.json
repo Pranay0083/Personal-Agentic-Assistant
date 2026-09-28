@@ -1,0 +1,23 @@
+{
+  "token_type": "Bearer",
+  "scope": "https://graph.microsoft.com/Calendars.Read https://graph.microsoft.com/Chat.Read https://graph.microsoft.com/Files.Read https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/User.Read openid",
+  "expires_in": 3600,
+  "ext_expires_in": 3600,
+  "access_token": "EwBwA8l6BAAUfixture-msa-opaque-access",
+  "refresh_token": "M.C517_BAY.fixture-msa-refresh",
+  "id_token": {
+    "$jwt": {
+      "aud": "00000000-1111-2222-3333-444444444444",
+      "iss": "https://login.microsoftonline.com/9188040d-6c67-4c5b-b112-36a304b66dad/v2.0",
+      "iat": 1790600000,
+      "nbf": 1790600000,
+      "exp": 1790603600,
+      "name": "Sam Rivera",
+      "oid": "00000000-0000-0000-0d4e-7a1b9c3f5e28",
+      "preferred_username": "sam.rivera@outlook.example",
+      "sub": "fixture-sub-msa",
+      "tid": "9188040d-6c67-4c5b-b112-36a304b66dad",
+      "ver": "2.0"
+    }
+  }
+}

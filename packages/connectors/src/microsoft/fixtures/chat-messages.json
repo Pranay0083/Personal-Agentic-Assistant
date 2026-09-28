@@ -1,0 +1,125 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#chats('19%3A6b1f3c2a-9d4e-4f7a-8c1b-2e3d4f5a6b7c_9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d%40unq.gbl.spaces')/messages",
+  "@odata.count": 3,
+  "value": [
+    {
+      "id": "1790587800000",
+      "replyToId": null,
+      "etag": "1790587800000",
+      "messageType": "message",
+      "createdDateTime": "2026-09-28T09:30:00.000Z",
+      "lastModifiedDateTime": "2026-09-28T09:30:00.000Z",
+      "lastEditedDateTime": null,
+      "deletedDateTime": null,
+      "subject": null,
+      "summary": null,
+      "chatId": "19:6b1f3c2a-9d4e-4f7a-8c1b-2e3d4f5a6b7c_9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d@unq.gbl.spaces",
+      "importance": "normal",
+      "locale": "en-us",
+      "webUrl": null,
+      "channelIdentity": null,
+      "policyViolation": null,
+      "eventDetail": null,
+      "from": {
+        "application": null,
+        "device": null,
+        "user": {
+          "id": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+          "displayName": "Priya Raman",
+          "userIdentityType": "aadUser"
+        }
+      },
+      "body": {
+        "contentType": "html",
+        "content": "<p><at id=\"0\">Avery</at> can you review the <strong>pricing</strong> slide before 3pm?</p>"
+      },
+      "attachments": [],
+      "mentions": [
+        {
+          "id": 0,
+          "mentionText": "Avery",
+          "mentioned": {
+            "application": null,
+            "device": null,
+            "conversation": null,
+            "tag": null,
+            "user": {
+              "id": "6b1f3c2a-9d4e-4f7a-8c1b-2e3d4f5a6b7c",
+              "displayName": "Avery Chen",
+              "userIdentityType": "aadUser"
+            }
+          }
+        }
+      ],
+      "reactions": [],
+      "messageHistory": []
+    },
+    {
+      "id": "1790587500000",
+      "replyToId": null,
+      "etag": "1790587500000",
+      "messageType": "message",
+      "createdDateTime": "2026-09-28T09:25:00.000Z",
+      "lastModifiedDateTime": "2026-09-28T09:25:00.000Z",
+      "lastEditedDateTime": null,
+      "deletedDateTime": null,
+      "subject": null,
+      "summary": null,
+      "chatId": "19:6b1f3c2a-9d4e-4f7a-8c1b-2e3d4f5a6b7c_9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d@unq.gbl.spaces",
+      "importance": "normal",
+      "locale": "en-us",
+      "webUrl": null,
+      "channelIdentity": null,
+      "policyViolation": null,
+      "eventDetail": null,
+      "from": {
+        "application": null,
+        "device": null,
+        "user": {
+          "id": "6b1f3c2a-9d4e-4f7a-8c1b-2e3d4f5a6b7c",
+          "displayName": "Avery Chen",
+          "userIdentityType": "aadUser"
+        }
+      },
+      "body": {
+        "contentType": "text",
+        "content": "Morning! Sending the deck shortly."
+      },
+      "attachments": [],
+      "mentions": [],
+      "reactions": [],
+      "messageHistory": []
+    },
+    {
+      "id": "1790587000000",
+      "replyToId": null,
+      "etag": "1790587000000",
+      "messageType": "systemEventMessage",
+      "createdDateTime": "2026-09-28T09:16:40.000Z",
+      "lastModifiedDateTime": "2026-09-28T09:16:40.000Z",
+      "lastEditedDateTime": null,
+      "deletedDateTime": null,
+      "subject": null,
+      "summary": null,
+      "chatId": "19:6b1f3c2a-9d4e-4f7a-8c1b-2e3d4f5a6b7c_9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d@unq.gbl.spaces",
+      "importance": "normal",
+      "locale": "en-us",
+      "webUrl": null,
+      "channelIdentity": null,
+      "policyViolation": null,
+      "from": null,
+      "body": {
+        "contentType": "html",
+        "content": "<systemEventMessage/>"
+      },
+      "attachments": [],
+      "mentions": [],
+      "reactions": [],
+      "messageHistory": [],
+      "eventDetail": {
+        "@odata.type": "#microsoft.graph.chatRenamedEventMessageDetail",
+        "chatDisplayName": "Pricing"
+      }
+    }
+  ]
+}

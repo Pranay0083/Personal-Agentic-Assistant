@@ -1,0 +1,11 @@
+{
+  "error": {
+    "code": "InvalidAuthenticationToken",
+    "message": "Lifetime validation failed, the token is expired.",
+    "innerError": {
+      "date": "2026-09-28T10:00:00",
+      "request-id": "00000000-0000-0000-0000-000000000001",
+      "client-request-id": "00000000-0000-0000-0000-000000000001"
+    }
+  }
+}

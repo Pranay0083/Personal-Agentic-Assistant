@@ -1,0 +1,31 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#Collection(message)",
+  "@odata.deltaLink": "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$deltatoken=LztZwWjo5IivWBhyxw5rACKxf7mPm0oW6JZZ7fvKxYPS_67JnEYmfQQMPccy6FRun0DWJF5775dvuXxlZnMYhBubC1v4SBVT9ZjO8f7acZI.uCdGKSBS4YxPEbn_Q5zxLSq91WhpGeT9CWFZmOy7Ew",
+  "value": [
+    {
+      "@odata.type": "#microsoft.graph.message",
+      "id": "AAkALgAAAAAAHYQDEapmEc2byACqAC-EWg0AIiLKjG2I7E-Xvk-ys6MD0wAAMf9ItCCC",
+      "subject": "Lunch?",
+      "bodyPreview": "Free at 12:30?",
+      "body": { "contentType": "text", "content": "Free at 12:30?\r\n" },
+      "from": { "emailAddress": { "name": "Jordan Lee", "address": "jordan.lee@contoso.example" } },
+      "sender": {
+        "emailAddress": { "name": "Jordan Lee", "address": "jordan.lee@contoso.example" }
+      },
+      "toRecipients": [
+        { "emailAddress": { "name": "Avery Chen", "address": "avery.chen@contoso.example" } }
+      ],
+      "ccRecipients": [],
+      "receivedDateTime": "2026-09-28T09:01:10Z",
+      "sentDateTime": "2026-09-28T09:01:07Z",
+      "conversationId": "AAQkAGI2TGuLAAAQAQAMfixtureConv2",
+      "internetMessageId": "<SN6PR01MB5678EFGH@SN6PR01MB5678.prod.outlook.example>",
+      "webLink": "https://outlook.office365.com/owa/?ItemID=AAkALgAAAAAAHYQDEapmEc2byACqAC%2FEWg0AIiLKjG2I7E%2BXvk%2Bys6MD0wAAMf9ItCCC&exvsurl=1&viewmodel=ReadMessageItem",
+      "parentFolderId": "AQMkADAwATM0MDAAMS1iNTcwLWI2NTEtMDACLTAwCgAuAAADkjbpfixtureInbox",
+      "isDraft": false,
+      "categories": [],
+      "inferenceClassification": "focused",
+      "importance": "normal"
+    }
+  ]
+}

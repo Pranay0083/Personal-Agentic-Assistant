@@ -1,0 +1,4 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('6b1f3c2a-9d4e-4f7a-8c1b-2e3d4f5a6b7c')/mailFolders('sentitems')/messages(id,conversationId,internetMessageId)",
+  "value": []
+}

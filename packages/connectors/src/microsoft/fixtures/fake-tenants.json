@@ -1,0 +1,307 @@
+{
+  "_comment": "Synthetic seed for CONNECTORS_FAKE=1 (Graph v1.0 shapes; dates are filled in at seed time). Never real account data.",
+  "users": [
+    {
+      "id": "6b1f3c2a-9d4e-4f7a-8c1b-2e3d4f5a6b7c",
+      "tenantId": "2f8e4b1c-7a3d-4e9f-b6c5-1d2e3f4a5b6c",
+      "upn": "avery.chen@contoso.example",
+      "mail": "avery.chen@contoso.example",
+      "displayName": "Avery Chen",
+      "nickname": "Contoso work",
+      "personal": false,
+      "messages": [
+        {
+          "folder": "inbox",
+          "ageMinutes": 45,
+          "message": {
+            "subject": "Q3 board deck: numbers by Thursday?",
+            "bodyPreview": "Hi Avery, could you send the final Q3 numbers for the board deck by Thursday noon?",
+            "body": {
+              "contentType": "html",
+              "content": "<html><head><style>p{margin:0}</style></head><body><p>Hi Avery,</p><p>Could you send the final Q3 numbers for the board deck by <b>Thursday noon</b>?</p><p>Thanks,<br>Priya</p></body></html>"
+            },
+            "from": {
+              "emailAddress": { "name": "Priya Raman", "address": "priya.raman@contoso.example" }
+            },
+            "toRecipients": [
+              { "emailAddress": { "name": "Avery Chen", "address": "avery.chen@contoso.example" } }
+            ],
+            "ccRecipients": [],
+            "importance": "high",
+            "inferenceClassification": "focused",
+            "categories": []
+          }
+        },
+        {
+          "folder": "inbox",
+          "ageMinutes": 180,
+          "message": {
+            "subject": "Vendor contract renewal",
+            "bodyPreview": "The Fabrikam renewal is due on the 30th. Legal needs your sign-off.",
+            "body": {
+              "contentType": "text",
+              "content": "The Fabrikam renewal is due on the 30th. Legal needs your sign-off before we countersign.\r\n\r\nJordan"
+            },
+            "from": {
+              "emailAddress": { "name": "Jordan Lee", "address": "jordan.lee@contoso.example" }
+            },
+            "toRecipients": [
+              { "emailAddress": { "name": "Avery Chen", "address": "avery.chen@contoso.example" } }
+            ],
+            "ccRecipients": [],
+            "importance": "normal",
+            "inferenceClassification": "focused",
+            "categories": ["Legal"]
+          }
+        },
+        {
+          "folder": "inbox",
+          "ageMinutes": 400,
+          "message": {
+            "subject": "Your weekly Contoso digest",
+            "bodyPreview": "Top stories this week across Contoso.",
+            "body": {
+              "contentType": "html",
+              "content": "<div>Top stories this week across Contoso.</div><div><a href=\"https://intranet.contoso.example\">Read more</a></div>"
+            },
+            "from": {
+              "emailAddress": { "name": "Contoso News", "address": "news@contoso.example" }
+            },
+            "toRecipients": [
+              { "emailAddress": { "name": "Avery Chen", "address": "avery.chen@contoso.example" } }
+            ],
+            "ccRecipients": [],
+            "importance": "low",
+            "inferenceClassification": "other",
+            "categories": []
+          }
+        },
+        {
+          "folder": "sentitems",
+          "ageMinutes": 600,
+          "message": {
+            "subject": "RE: Offsite agenda",
+            "bodyPreview": "Looks good to me, let's lock it in.",
+            "body": { "contentType": "text", "content": "Looks good to me, let's lock it in." },
+            "from": {
+              "emailAddress": { "name": "Avery Chen", "address": "avery.chen@contoso.example" }
+            },
+            "toRecipients": [
+              { "emailAddress": { "name": "Sam Okafor", "address": "sam.okafor@contoso.example" } }
+            ],
+            "ccRecipients": [],
+            "importance": "normal",
+            "inferenceClassification": "focused",
+            "categories": []
+          }
+        }
+      ],
+      "events": [
+        {
+          "startInHours": 20,
+          "durationMinutes": 30,
+          "event": {
+            "subject": "1:1 Priya / Avery",
+            "bodyPreview": "Weekly sync",
+            "body": { "contentType": "html", "content": "<p>Weekly sync</p>" },
+            "isAllDay": false,
+            "isCancelled": false,
+            "isOrganizer": false,
+            "organizer": {
+              "emailAddress": { "name": "Priya Raman", "address": "priya.raman@contoso.example" }
+            },
+            "location": { "displayName": "Teams" },
+            "type": "singleInstance",
+            "responseStatus": { "response": "accepted" }
+          }
+        },
+        {
+          "startInHours": 50,
+          "durationMinutes": 60,
+          "event": {
+            "subject": "Q3 board prep",
+            "bodyPreview": "Dry run of the board deck",
+            "body": { "contentType": "text", "content": "Dry run of the board deck" },
+            "isAllDay": false,
+            "isCancelled": false,
+            "isOrganizer": true,
+            "organizer": {
+              "emailAddress": { "name": "Avery Chen", "address": "avery.chen@contoso.example" }
+            },
+            "location": { "displayName": "Room 4.12" },
+            "type": "singleInstance",
+            "responseStatus": { "response": "organizer" }
+          }
+        }
+      ],
+      "chats": [
+        {
+          "id": "19:6b1f3c2a-9d4e-4f7a-8c1b-2e3d4f5a6b7c_9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d@unq.gbl.spaces",
+          "topic": null,
+          "chatType": "oneOnOne",
+          "webUrl": "https://teams.microsoft.com/l/chat/19%3A6b1f3c2a-9d4e-4f7a-8c1b-2e3d4f5a6b7c_9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d%40unq.gbl.spaces/0",
+          "createdDateTime": "2026-01-12T09:00:00Z"
+        },
+        {
+          "id": "19:3c5d7e9f1a2b4c6d8e0f@thread.v2",
+          "topic": "Launch crew",
+          "chatType": "group",
+          "webUrl": "https://teams.microsoft.com/l/chat/19%3A3c5d7e9f1a2b4c6d8e0f%40thread.v2/0",
+          "createdDateTime": "2026-02-02T09:00:00Z"
+        }
+      ],
+      "chatMessages": [
+        {
+          "chatId": "19:6b1f3c2a-9d4e-4f7a-8c1b-2e3d4f5a6b7c_9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d@unq.gbl.spaces",
+          "ageMinutes": 30,
+          "message": {
+            "messageType": "message",
+            "from": {
+              "user": {
+                "id": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+                "displayName": "Priya Raman",
+                "userIdentityType": "aadUser"
+              }
+            },
+            "body": {
+              "contentType": "text",
+              "content": "Can you review the pricing slide before 3pm?"
+            }
+          }
+        },
+        {
+          "chatId": "19:3c5d7e9f1a2b4c6d8e0f@thread.v2",
+          "ageMinutes": 90,
+          "message": {
+            "messageType": "message",
+            "from": {
+              "user": {
+                "id": "4d3c2b1a-0f9e-4d8c-a7b6-5e4d3c2b1a0f",
+                "displayName": "Jordan Lee",
+                "userIdentityType": "aadUser"
+              }
+            },
+            "body": {
+              "contentType": "html",
+              "content": "<p>Launch moved to <strong>Tuesday</strong>. Please update the checklist.</p>"
+            }
+          }
+        }
+      ],
+      "driveItems": [
+        {
+          "ageMinutes": 120,
+          "item": {
+            "name": "Q3 Board Deck.pptx",
+            "size": 482113,
+            "file": {
+              "mimeType": "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            },
+            "parentReference": { "driveId": "b!contoso-avery-drive", "path": "/drive/root:/Board" },
+            "lastModifiedBy": {
+              "user": {
+                "id": "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d",
+                "displayName": "Priya Raman",
+                "email": "priya.raman@contoso.example"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "0d4e7a1b9c3f5e28",
+      "tenantId": "9188040d-6c67-4c5b-b112-36a304b66dad",
+      "upn": "sam.rivera@outlook.example",
+      "mail": null,
+      "displayName": "Sam Rivera",
+      "nickname": "Personal Outlook",
+      "personal": true,
+      "messages": [
+        {
+          "folder": "inbox",
+          "ageMinutes": 60,
+          "message": {
+            "subject": "Dentist appointment reminder",
+            "bodyPreview": "This is a reminder of your appointment on Friday at 9:30.",
+            "body": {
+              "contentType": "html",
+              "content": "<p>This is a reminder of your appointment on <b>Friday at 9:30</b>.</p><p>Reply C to confirm.</p>"
+            },
+            "from": {
+              "emailAddress": {
+                "name": "Bright Smile Dental",
+                "address": "reminders@brightsmile.example"
+              }
+            },
+            "toRecipients": [
+              { "emailAddress": { "name": "Sam Rivera", "address": "sam.rivera@outlook.example" } }
+            ],
+            "ccRecipients": [],
+            "importance": "normal",
+            "inferenceClassification": "focused",
+            "categories": []
+          }
+        },
+        {
+          "folder": "inbox",
+          "ageMinutes": 300,
+          "message": {
+            "subject": "Weekend hike?",
+            "bodyPreview": "Want to do the ridge trail on Saturday?",
+            "body": {
+              "contentType": "text",
+              "content": "Want to do the ridge trail on Saturday? Leaving 8am."
+            },
+            "from": {
+              "emailAddress": { "name": "Alex Kim", "address": "alex.kim@outlook.example" }
+            },
+            "toRecipients": [
+              { "emailAddress": { "name": "Sam Rivera", "address": "sam.rivera@outlook.example" } }
+            ],
+            "ccRecipients": [],
+            "importance": "normal",
+            "inferenceClassification": "focused",
+            "categories": []
+          }
+        }
+      ],
+      "events": [
+        {
+          "startInHours": 70,
+          "durationMinutes": 45,
+          "event": {
+            "subject": "Dentist",
+            "bodyPreview": "",
+            "body": { "contentType": "text", "content": "" },
+            "isAllDay": false,
+            "isCancelled": false,
+            "isOrganizer": true,
+            "organizer": {
+              "emailAddress": { "name": "Sam Rivera", "address": "sam.rivera@outlook.example" }
+            },
+            "location": { "displayName": "Bright Smile Dental" },
+            "type": "singleInstance",
+            "responseStatus": { "response": "organizer" }
+          }
+        }
+      ],
+      "chats": [],
+      "chatMessages": [],
+      "driveItems": [
+        {
+          "ageMinutes": 1440,
+          "item": {
+            "name": "Trip budget.xlsx",
+            "size": 18211,
+            "file": {
+              "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            },
+            "parentReference": { "driveId": "0d4e7a1b9c3f5e28", "path": "/drive/root:" },
+            "lastModifiedBy": { "user": { "id": "0d4e7a1b9c3f5e28", "displayName": "Sam Rivera" } }
+          }
+        }
+      ]
+    }
+  ]
+}

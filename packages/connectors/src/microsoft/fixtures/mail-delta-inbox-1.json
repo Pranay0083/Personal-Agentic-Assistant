@@ -1,0 +1,42 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#Collection(message)",
+  "@odata.nextLink": "https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages/delta?$skiptoken=MSkYoWq8Fixture_Page2",
+  "value": [
+    {
+      "@odata.type": "#microsoft.graph.message",
+      "@odata.etag": "W/\"CQAAABYAAAAiIsqMbYjsT5e/T7KzowPTAAAx1VaO\"",
+      "id": "AAkALgAAAAAAHYQDEapmEc2byACqAC-EWg0AIiLKjG2I7E-Xvk-ys6MD0wAAMf9ItAAA",
+      "subject": "Budget sign-off for Q4",
+      "bodyPreview": "Hi Avery, can you approve the Q4 budget by Friday? The sheet is attached.",
+      "body": {
+        "contentType": "html",
+        "content": "<html><head>\r\n<meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"><style>p{margin:0}</style></head><body><div><p>Hi Avery,</p><p>Can you approve the Q4 budget by <b>Friday</b>? The sheet is attached.</p><p>Thanks &amp; regards,<br>Priya</p></div></body></html>"
+      },
+      "from": {
+        "emailAddress": { "name": "Priya Raman", "address": "Priya.Raman@contoso.example" }
+      },
+      "sender": {
+        "emailAddress": { "name": "Priya Raman", "address": "Priya.Raman@contoso.example" }
+      },
+      "toRecipients": [
+        { "emailAddress": { "name": "Avery Chen", "address": "avery.chen@contoso.example" } }
+      ],
+      "ccRecipients": [],
+      "receivedDateTime": "2026-09-28T08:15:02Z",
+      "sentDateTime": "2026-09-28T08:14:58Z",
+      "conversationId": "AAQkAGI2TGuLAAAQAQAMfixtureConv1",
+      "internetMessageId": "<SN6PR01MB1234ABCD@SN6PR01MB1234.prod.outlook.example>",
+      "webLink": "https://outlook.office365.com/owa/?ItemID=AAkALgAAAAAAHYQDEapmEc2byACqAC%2FEWg0AIiLKjG2I7E%2BXvk%2Bys6MD0wAAMf9ItAAA&exvsurl=1&viewmodel=ReadMessageItem",
+      "parentFolderId": "AQMkADAwATM0MDAAMS1iNTcwLWI2NTEtMDACLTAwCgAuAAADkjbpfixtureInbox",
+      "isDraft": false,
+      "categories": ["Finance"],
+      "inferenceClassification": "focused",
+      "importance": "high"
+    },
+    {
+      "@odata.type": "#microsoft.graph.message",
+      "id": "AAkALgAAAAAAHYQDEapmEc2byACqAC-EWg0AIiLKjG2I7E-Xvk-ys6MD0wAAMf9ItBBB",
+      "@removed": { "reason": "deleted" }
+    }
+  ]
+}

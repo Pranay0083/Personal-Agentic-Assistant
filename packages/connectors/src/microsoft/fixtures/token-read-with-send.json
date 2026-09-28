@@ -1,0 +1,23 @@
+{
+  "token_type": "Bearer",
+  "scope": "Calendars.Read Chat.Read Files.Read Mail.Read Mail.Send User.Read openid profile email",
+  "expires_in": 4153,
+  "ext_expires_in": 4153,
+  "access_token": "fixture-access-mixed",
+  "refresh_token": "0.AXkAfixture-refresh-mixed",
+  "id_token": {
+    "$jwt": {
+      "aud": "00000000-1111-2222-3333-444444444444",
+      "iss": "https://login.microsoftonline.com/2f8e4b1c-7a3d-4e9f-b6c5-1d2e3f4a5b6c/v2.0",
+      "iat": 1790600000,
+      "nbf": 1790600000,
+      "exp": 1790603600,
+      "name": "Avery Chen",
+      "oid": "6b1f3c2a-9d4e-4f7a-8c1b-2e3d4f5a6b7c",
+      "preferred_username": "avery.chen@contoso.example",
+      "sub": "fixture-sub-work",
+      "tid": "2f8e4b1c-7a3d-4e9f-b6c5-1d2e3f4a5b6c",
+      "ver": "2.0"
+    }
+  }
+}

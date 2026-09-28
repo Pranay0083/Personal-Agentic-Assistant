@@ -1,0 +1,108 @@
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#Collection(event)",
+  "@odata.deltaLink": "https://graph.microsoft.com/v1.0/me/calendarView/delta?$deltatoken=R0usmcCM996atia_s",
+  "value": [
+    {
+      "@odata.type": "#microsoft.graph.event",
+      "@odata.etag": "W/\"EZ9r3czxY0m2jz8c45czkwAAFXcvIw==\"",
+      "id": "AAMkADNkNmAAAFfixtureEvent1",
+      "createdDateTime": "2026-09-20T10:00:00.0000000Z",
+      "lastModifiedDateTime": "2026-09-27T16:12:44.3710000Z",
+      "iCalUId": "040000008200E00074C5B7101A82E00800000000fixtureIcal1",
+      "subject": "Q4 planning",
+      "bodyPreview": "Agenda: roadmap, hiring, budget",
+      "body": {
+        "contentType": "html",
+        "content": "<html><body><p>Agenda:</p><ul><li>roadmap</li><li>hiring</li><li>budget</li></ul></body></html>"
+      },
+      "isAllDay": false,
+      "isCancelled": false,
+      "isOrganizer": false,
+      "responseStatus": {
+        "response": "tentativelyAccepted",
+        "time": "2026-09-27T16:12:44Z"
+      },
+      "type": "singleInstance",
+      "seriesMasterId": null,
+      "webLink": "https://outlook.office365.com/owa/?itemid=AAMkADNkNmAAAFfixtureEvent1&exvsurl=1&path=/calendar/item",
+      "start": {
+        "dateTime": "2026-09-30T15:00:00.0000000",
+        "timeZone": "UTC"
+      },
+      "end": {
+        "dateTime": "2026-09-30T16:00:00.0000000",
+        "timeZone": "UTC"
+      },
+      "location": {
+        "displayName": "Room 4.12"
+      },
+      "organizer": {
+        "emailAddress": {
+          "name": "Priya Raman",
+          "address": "priya.raman@contoso.example"
+        }
+      },
+      "attendees": [
+        {
+          "type": "required",
+          "status": {
+            "response": "tentativelyAccepted"
+          },
+          "emailAddress": {
+            "name": "Avery Chen",
+            "address": "avery.chen@contoso.example"
+          }
+        }
+      ]
+    },
+    {
+      "@odata.type": "#microsoft.graph.event",
+      "@odata.etag": "W/\"EZ9r3czxY0m2jz8c45czkwAAFXcvJA==\"",
+      "id": "AAMkADNkNmAAAFfixtureEvent3",
+      "createdDateTime": "2026-09-27T12:00:00.0000000Z",
+      "lastModifiedDateTime": "2026-09-27T12:00:00.0000000Z",
+      "iCalUId": "040000008200E00074C5B7101A82E00800000000fixtureIcal3",
+      "subject": "Vendor demo",
+      "bodyPreview": "",
+      "body": {
+        "contentType": "html",
+        "content": ""
+      },
+      "isAllDay": false,
+      "isCancelled": false,
+      "isOrganizer": false,
+      "responseStatus": {
+        "response": "notResponded",
+        "time": "0001-01-01T00:00:00Z"
+      },
+      "type": "singleInstance",
+      "seriesMasterId": null,
+      "webLink": "https://outlook.office365.com/owa/?itemid=AAMkADNkNmAAAFfixtureEvent3&exvsurl=1&path=/calendar/item",
+      "start": {
+        "dateTime": "2026-10-01T09:00:00.0000000",
+        "timeZone": "UTC"
+      },
+      "end": {
+        "dateTime": "2026-10-01T09:30:00.0000000",
+        "timeZone": "UTC"
+      },
+      "location": {
+        "displayName": ""
+      },
+      "organizer": {
+        "emailAddress": {
+          "name": "Dana Whitfield",
+          "address": "dana@fabrikam.example"
+        }
+      },
+      "attendees": []
+    },
+    {
+      "@odata.type": "#microsoft.graph.event",
+      "id": "AAMkADNkNmAAAFfixtureEvent2",
+      "@removed": {
+        "reason": "deleted"
+      }
+    }
+  ]
+}
