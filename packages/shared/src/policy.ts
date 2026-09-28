@@ -74,6 +74,8 @@ export const AccessRequest = z.object({
   kind: AccessRequestKind,
   principal: z.string(),
   clientName: z.string().nullable(),
+  /** False for dynamically registered clients: the name is self-chosen, show it as unverified. */
+  clientNameVerified: z.boolean(),
   /** For `mcp_connect`: where the client will receive the code. The name is self-reported; this is not. */
   redirectHost: z.string().nullable(),
   accountId: z.uuid().nullable(),

@@ -65,9 +65,21 @@ export const PushTokenReq = z.object({ token: z.string(), platform: z.enum(['ios
 // ---- Accounts ----
 // GET /accounts -> { accounts }
 export const AccountsRes = z.object({ accounts: z.array(Account) });
-// POST /accounts/:provider/connect -> { url }  (open in browser; callback redirects to hub://connected?accountId=)
+// POST /accounts/:provider/connect -> { url }  (open in browser)
+// GET /oauth/google/callback does NOT create the account. It stores the result against a
+// single-use id and redirects to hub://connected?pending=<id> (or ?error=<code>). The app
+// then calls POST /accounts/complete with its own session; the server checks that the
+// session's user is the one who started the flow. This stops a consent link started by
+// someone else from attaching your mailbox to their account.
 export const ConnectReq = z.object({ redirectUri: z.string().optional() });
 export const ConnectRes = z.object({ url: z.string() });
+// POST /accounts/complete -> CompleteConnectRes
+export const CompleteConnectReq = z.object({ pending: z.string().min(16).max(128) });
+export const CompleteConnectRes = z.object({
+  account: Account,
+  access: z.enum(['read', 'write']),
+});
+export type CompleteConnectRes = z.infer<typeof CompleteConnectRes>;
 // PATCH /accounts/:id -> Account
 export const UpdateAccountReq = z
   .object({
@@ -149,12 +161,12 @@ export const ApproveProposalReq = z.object({
 export const AccessRequestsRes = z.object({ requests: z.array(AccessRequest) });
 // POST /access-requests/:id/allow { durationMinutes } -> { grant: Grant | null }
 export const AllowAccessReq = z.object({
-  durationMinutes: z
-    .number()
-    .int()
-    .min(5)
-    .max(24 * 60)
-    .default(60),
+  durationMinutes: z.number().int().min(5).max(24 * 60).default(60),
+  /**
+   * Required for kind `mcp_connect`: the pairing code shown on the computer's consent page.
+   * Proves the person tapping Allow is looking at that page, not a phishing copy of it.
+   */
+  pairingCode: z.string().min(4).max(16).optional(),
 });
 // POST /access-requests/:id/deny -> 204
 

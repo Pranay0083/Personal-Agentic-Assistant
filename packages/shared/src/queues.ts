@@ -39,6 +39,11 @@ export type AgentJob = z.infer<typeof AgentJob>;
 export const ExecutorJob = z.object({ proposalId: z.uuid() });
 export type ExecutorJob = z.infer<typeof ExecutorJob>;
 
+/**
+ * Push text leaves our systems (Expo, APNs/FCM, lock screens), so `title` and `body` must be
+ * generic ("New task", "Draft ready") and never contain subjects, names, summaries or any
+ * other message-derived text. The app fetches details by id over the authenticated API.
+ */
 export const NotifierJob = z.object({
   userId: z.uuid(),
   kind: z.enum(['approval', 'vip', 'task', 'brief', 'access_request']),

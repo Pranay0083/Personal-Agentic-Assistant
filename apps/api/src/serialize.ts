@@ -181,6 +181,8 @@ export function toAccessRequest(r: AccessRequestRow): AccessRequest {
     kind: r.kind as AccessRequest['kind'],
     principal: r.principal,
     clientName: r.clientName,
+    // MCP clients register themselves (RFC 7591), so their names are never verified.
+    clientNameVerified: false,
     // Only this field of meta leaves the server; the rest (poll token hash, PKCE) stays.
     redirectHost: r.kind === 'mcp_connect' ? metaString(r.meta, 'redirectHost') : null,
     accountId: r.accountId,
