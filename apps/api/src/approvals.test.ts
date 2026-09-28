@@ -1,6 +1,15 @@
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { accessRequests, auditLog, events, grants, mcpClients, proposals, users } from '@hub/db';
+import {
+  accessRequests,
+  auditLog,
+  events,
+  grants,
+  items,
+  mcpClients,
+  proposals,
+  users,
+} from '@hub/db';
 import { can, decide, loadContext } from '@hub/policy';
 import { setup, type TestEnv } from './test-helpers';
 
@@ -330,6 +339,40 @@ describe('control', () => {
     expect(audits.map((a) => a.action)).toEqual(
       expect.arrayContaining(['control.paused', 'control.resumed']),
     );
+  });
+});
+
+describe('resume after pause', () => {
+  it('re-queues triage for items that synced while paused, and only those', async () => {
+    const [skipped, done] = await env.t.db
+      .insert(items)
+      .values([
+        {
+          accountId: work,
+          kind: 'email',
+          externalId: 'paused-1',
+          title: 'While paused',
+          receivedAt: new Date('2026-09-28T09:55:00Z'),
+        },
+        {
+          accountId: work,
+          kind: 'email',
+          externalId: 'triaged-1',
+          title: 'Already triaged',
+          bucket: 'fyi',
+          triage: {},
+          receivedAt: new Date('2026-09-28T09:50:00Z'),
+        },
+      ])
+      .returning();
+    await env.app.inject({ method: 'POST', url: '/control/pause', headers: auth });
+    const before = env.jobs.length;
+    await env.app.inject({ method: 'POST', url: '/control/resume', headers: auth });
+    const triage = env.jobs.slice(before).filter((j) => j.name === 'agents');
+    const ids = triage.map((j) => (j.data as { itemId: string }).itemId);
+    expect(ids).toContain(skipped!.id);
+    expect(ids).not.toContain(done!.id);
+    expect(new Set(triage.map((j) => j.opts?.jobId)).size).toBe(triage.length);
   });
 });
 

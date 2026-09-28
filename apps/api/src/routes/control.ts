@@ -1,6 +1,7 @@
-import { and, asc, count, eq, gt, isNull, max } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, gte, inArray, isNull, max } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { accounts, events, grants, mcpClients, users } from '@hub/db';
+import { accounts, events, grants, items, mcpClients, users } from '@hub/db';
+import { QUEUES } from '@hub/shared/queues';
 import type { Provider } from '@hub/shared';
 import type { ControlRes } from '@hub/shared/api';
 import type { Ctx } from '../context';
@@ -61,7 +62,50 @@ export function controlRoutes(app: FastifyInstance, ctx: Ctx) {
       action: paused ? 'control.paused' : 'control.resumed',
     });
     await ctx.live(userId, { type: 'control.changed', paused });
+    if (!paused) await retriageSkipped(userId);
     return control(userId);
+  }
+
+  /**
+   * Items that arrived while paused synced but were never triaged (agents were denied).
+   * On resume, queue triage for them. The ids are fresh because the denied jobs'
+   * ids are already completed and BullMQ would drop a re-add.
+   */
+  async function retriageSkipped(userId: string) {
+    const since = new Date(ctx.now().getTime() - 7 * 24 * 3600_000);
+    const acctIds = db
+      .select({ id: accounts.id })
+      .from(accounts)
+      .where(eq(accounts.userId, userId));
+    const pending = await db
+      .select({ id: items.id })
+      .from(items)
+      .where(
+        and(
+          inArray(items.accountId, acctIds),
+          isNull(items.bucket),
+          isNull(items.triage),
+          gte(items.receivedAt, since),
+        ),
+      )
+      .orderBy(desc(items.receivedAt))
+      .limit(500);
+    const stamp = ctx.now().getTime();
+    for (const it of pending) {
+      await ctx.enqueue(
+        QUEUES.agents,
+        { agent: 'triage', itemId: it.id },
+        { jobId: `triage-resume-${it.id}-${stamp}` },
+      );
+    }
+    if (pending.length) {
+      await ctx.audit({
+        userId,
+        principal: 'user',
+        action: 'control.retriage',
+        details: { count: pending.length },
+      });
+    }
   }
 
   app.get('/control', async (req) => control(req.auth.userId));
