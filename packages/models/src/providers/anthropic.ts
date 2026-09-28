@@ -1,0 +1,119 @@
+import Anthropic from '@anthropic-ai/sdk';
+import { ModelProviderError, ModelRefusalError, isRetryableStatus } from '../errors';
+import type { GenerateRequest, GenerateResult, ModelProvider } from '../types';
+
+type RequestOpts = { timeout?: number; maxRetries?: number };
+
+/** The slice of the SDK client we use; tests pass a mock. */
+export type AnthropicClientLike = {
+  messages: {
+    create(
+      params: Anthropic.MessageCreateParamsNonStreaming,
+      options?: RequestOpts,
+    ): Promise<Anthropic.Message>;
+  };
+};
+
+export const DEFAULT_MAX_TOKENS = 16_000;
+
+/**
+ * Sampling parameters (`temperature`) were removed on Opus 4.7+, Opus 5.x, Sonnet 5 and
+ * Fable; sending them returns a 400. Older models (Haiku 4.5, 4.6 family) accept them.
+ */
+export function acceptsSampling(model: string): boolean {
+  return !/^claude-(opus-(4-[7-9]|5)|sonnet-5|fable|mythos)/.test(model);
+}
+
+/** `output_config.effort` is supported on Opus 4.5+, Sonnet 4.6+, Fable; errors on Haiku 4.5. */
+export function acceptsEffort(model: string): boolean {
+  return /^claude-(opus-(4-[5-9]|5)|sonnet-(4-6|5)|fable|mythos)/.test(model);
+}
+
+export class AnthropicProvider implements ModelProvider {
+  readonly kind = 'anthropic' as const;
+  private readonly client: AnthropicClientLike;
+
+  constructor(opts: { apiKey?: string; baseURL?: string; client?: AnthropicClientLike }) {
+    this.client =
+      opts.client ??
+      new Anthropic({
+        apiKey: opts.apiKey ?? null,
+        ...(opts.baseURL ? { baseURL: opts.baseURL } : {}),
+        // The router owns retries and backoff.
+        maxRetries: 0,
+      });
+  }
+
+  toParams(req: GenerateRequest): Anthropic.MessageCreateParamsNonStreaming {
+    const params: Anthropic.MessageCreateParamsNonStreaming = {
+      model: req.model,
+      max_tokens: req.maxTokens ?? DEFAULT_MAX_TOKENS,
+      system: req.system,
+      messages: req.messages.map((m) => ({ role: m.role, content: m.content })),
+    };
+    if (req.tools?.length) {
+      params.tools = req.tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        input_schema: t.inputSchema as Anthropic.Tool.InputSchema,
+      }));
+    }
+    if (req.temperature !== undefined && acceptsSampling(req.model)) {
+      params.temperature = req.temperature;
+    }
+    if (req.effort && acceptsEffort(req.model)) {
+      params.output_config = { effort: req.effort };
+    }
+    return params;
+  }
+
+  async generate(req: GenerateRequest): Promise<GenerateResult> {
+    let res: Anthropic.Message;
+    try {
+      res = await this.client.messages.create(this.toParams(req), {
+        maxRetries: 0,
+        ...(req.timeoutMs ? { timeout: req.timeoutMs } : {}),
+      });
+    } catch (err) {
+      throw wrapAnthropicError(err);
+    }
+    if (res.stop_reason === 'refusal') throw new ModelRefusalError();
+
+    let text = '';
+    const toolCalls: GenerateResult['toolCalls'] = [];
+    for (const block of res.content) {
+      if (block.type === 'text') text += block.text;
+      else if (block.type === 'tool_use') toolCalls.push({ name: block.name, input: block.input });
+    }
+    const u = res.usage;
+    return {
+      text,
+      toolCalls,
+      usage: {
+        inputTokens:
+          (u.input_tokens ?? 0) +
+          (u.cache_creation_input_tokens ?? 0) +
+          (u.cache_read_input_tokens ?? 0),
+        outputTokens: u.output_tokens ?? 0,
+      },
+      model: res.model || req.model,
+      provider: 'anthropic',
+    };
+  }
+}
+
+export function wrapAnthropicError(err: unknown): ModelProviderError {
+  if (err instanceof Anthropic.APIConnectionError) {
+    // Includes APIConnectionTimeoutError.
+    return new ModelProviderError('anthropic: connection error', { retryable: true, cause: err });
+  }
+  if (err instanceof Anthropic.APIError) {
+    return new ModelProviderError(`anthropic: HTTP ${err.status ?? '?'}`, {
+      status: err.status,
+      retryable: isRetryableStatus(err.status),
+      cause: err,
+    });
+  }
+  if (err instanceof ModelProviderError) return err;
+  return new ModelProviderError('anthropic: request failed', { retryable: false, cause: err });
+}

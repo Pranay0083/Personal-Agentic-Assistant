@@ -1,0 +1,189 @@
+import { and, eq, isNull, ne, or } from 'drizzle-orm';
+import { audit, items, tasks } from '@hub/db';
+import {
+  daysBetween,
+  isIsoDate,
+  localParts,
+  parseModelJson,
+  relativeDayLabel,
+  zonedTimeToUtc,
+} from '@hub/models';
+import { QUEUES, type NotifierJob } from '@hub/shared/queues';
+import {
+  agentPrincipal,
+  check,
+  fenceItem,
+  isFromMe,
+  itemContent,
+  jobId,
+  loadItemContext,
+  referenceLines,
+  resourceForKind,
+  type AgentDeps,
+  type AgentOutcome,
+} from './context';
+import { EXTRACTOR_SYSTEM, ExtractorOutput, PROMISES_ADDENDUM } from './prompts';
+import { isVipSender } from './triage';
+
+const PRINCIPAL = 'agent:extractor';
+/** Date-only deadlines ("by Thursday") are due at end of the working day, local time. */
+export const DEFAULT_DUE_TIME = '17:00';
+
+/** Turns the model's local due date/time into a UTC instant; rejects implausible dates. */
+export function resolveDueAt(
+  due: string | null | undefined,
+  dueTime: string | null | undefined,
+  refDate: string,
+  timezone: string,
+): Date | null {
+  if (!due || !isIsoDate(due)) return null;
+  const diff = daysBetween(refDate, due);
+  if (diff < -1 || diff > 730) return null;
+  return zonedTimeToUtc(due, dueTime ?? DEFAULT_DUE_TIME, timezone);
+}
+
+export async function runExtractor(deps: AgentDeps, itemId: string): Promise<AgentOutcome> {
+  const { db } = deps;
+  const ctx = await loadItemContext(db, itemId);
+  if (!ctx) return { status: 'missing' };
+  const userId = ctx.account.userId;
+  const accountId = ctx.account.id;
+  const p = agentPrincipal(userId, 'extractor');
+  const resource = resourceForKind(ctx.item.kind);
+  if (!resource) return { status: 'unsupported_kind' };
+  const target = `item:${itemId}`;
+
+  const read = await check(deps, p, accountId, resource, 'read', target);
+  if (!read.allow) return { status: 'denied', reason: read.reason };
+
+  const fromMe = isFromMe(ctx);
+  const content = await itemContent(deps, ctx);
+  await audit(db, {
+    userId,
+    principal: PRINCIPAL,
+    action: 'agent.read',
+    target,
+    details: {
+      accountId,
+      resource,
+      bodyIncluded: content.bodyIncluded,
+      mode: fromMe ? 'promises' : 'requests',
+    },
+  });
+
+  const refDate = localParts(ctx.item.receivedAt, ctx.timezone).date;
+  const res = await deps.router.generate({
+    userId,
+    agent: 'extractor',
+    system: fromMe ? `${EXTRACTOR_SYSTEM}\n${PROMISES_ADDENDUM}` : EXTRACTOR_SYSTEM,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          referenceLines(ctx.item.receivedAt, ctx.timezone),
+          fromMe ? 'Mode: promises' : 'Mode: requests',
+          fenceItem(ctx.item.kind, content.text),
+        ].join('\n\n'),
+      },
+    ],
+    maxTokens: 4096,
+    effort: 'low',
+    json: true,
+  });
+  const out = parseModelJson(res.text, ExtractorOutput);
+  const found = out.tasks.slice(0, 5);
+
+  if (found.length === 0) {
+    await audit(db, {
+      userId,
+      principal: PRINCIPAL,
+      action: 'agent.extract',
+      target,
+      details: { tasks: 0, model: res.model },
+    });
+    if (!fromMe && ctx.item.bucket === 'needs_you' && (await isVipSender(db, ctx))) {
+      const job: NotifierJob = {
+        userId,
+        kind: 'vip',
+        title: `${ctx.item.author ?? 'VIP'} needs you`,
+        body: ctx.item.summary ?? ctx.item.title ?? '',
+        data: { itemId },
+        dedupeKey: `vip:${itemId}`,
+      };
+      await deps.enqueue(QUEUES.notifier, job, { jobId: jobId('notify', 'vip', itemId) });
+    }
+    return { status: 'no_tasks' };
+  }
+
+  const write = await check(deps, p, accountId, 'task.create', 'write', target);
+  if (!write.allow) return { status: 'denied', reason: write.reason };
+  // `ask` (Cautious preset): agent tasks already land unreviewed (confirmed_by_user NULL) and
+  // the user confirms or rejects them, so the task itself is the approval request.
+
+  const created: string[] = [];
+  for (const [i, t] of found.entries()) {
+    const dueAt = resolveDueAt(t.due, t.dueTime, refDate, ctx.timezone);
+    const [row] = await db
+      .insert(tasks)
+      .values({
+        userId,
+        accountId,
+        title: t.title.replace(/\s+/g, ' ').trim().slice(0, 200),
+        dueAt,
+        project: t.project?.trim().slice(0, 80) || null,
+        sourceItemId: itemId,
+        confidence: t.confidence ?? null,
+        createdBy: PRINCIPAL,
+        // Index-based: re-running the extractor on the same item never duplicates a task.
+        dedupeKey: `extractor:${itemId}:${i}`,
+      })
+      .onConflictDoNothing({ target: [tasks.userId, tasks.dedupeKey] })
+      .returning({ id: tasks.id, title: tasks.title, dueAt: tasks.dueAt });
+    if (!row) continue;
+    created.push(row.id);
+    await audit(db, {
+      userId,
+      principal: PRINCIPAL,
+      action: 'agent.task.create',
+      target: `task:${row.id}`,
+      details: {
+        itemId,
+        accountId,
+        model: res.model,
+        needsApproval: write.needsApproval,
+        hasDue: !!row.dueAt,
+      },
+    });
+    await deps.publishLive(userId, { type: 'task.created', taskId: row.id });
+    const dueLabel = row.dueAt
+      ? relativeDayLabel(
+          localParts(row.dueAt, ctx.timezone).date,
+          localParts(deps.now(), ctx.timezone).date,
+        )
+      : null;
+    const job: NotifierJob = {
+      userId,
+      kind: 'task',
+      title: 'New task',
+      body: dueLabel ? `${row.title} · due ${dueLabel}` : row.title,
+      data: { taskId: row.id, itemId },
+      dedupeKey: `task:${row.id}`,
+    };
+    await deps.enqueue(QUEUES.notifier, job, { jobId: jobId('notify', 'task', row.id) });
+  }
+
+  if (created.length > 0 && !fromMe) {
+    // "Draft ready" (reply agent) wins over "Task created".
+    await db
+      .update(items)
+      .set({ statusLabel: 'Task created', updatedAt: deps.now() })
+      .where(
+        and(
+          eq(items.id, itemId),
+          or(isNull(items.statusLabel), ne(items.statusLabel, 'Draft ready')),
+        ),
+      );
+    await deps.publishLive(userId, { type: 'item.updated', itemId });
+  }
+  return { status: 'extracted', created: created.length };
+}
