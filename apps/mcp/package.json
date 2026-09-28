@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@hub/db": "workspace:*",
+    "@hub/models": "workspace:*",
     "@hub/policy": "workspace:*",
     "@hub/server": "workspace:*",
     "@hub/shared": "workspace:*",
