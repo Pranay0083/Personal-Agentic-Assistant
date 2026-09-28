@@ -1,0 +1,7 @@
+{
+  "access_token": "eyJraWQiOiJmYWtlIiwiYWxnIjoiUlMyNTYifQ.write-access.sig",
+  "refresh_token": "eyJraWQiOiJmYWtlIn0.write-refresh-1.sig",
+  "expires_in": 3600,
+  "scope": "write:jira-work read:me offline_access",
+  "token_type": "Bearer"
+}

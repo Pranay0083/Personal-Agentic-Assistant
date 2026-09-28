@@ -1,0 +1,351 @@
+{
+  "issues": [
+    {
+      "expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
+      "id": "10477",
+      "self": "https://api.atlassian.com/ex/jira/1a2b3c4d-0000-4000-8000-00000000a001/rest/api/3/issue/10477",
+      "key": "PROJ-477",
+      "fields": {
+        "summary": "Document the new rate limits for the public API",
+        "status": {
+          "self": "https://api.atlassian.com/ex/jira/1a2b3c4d-0000-4000-8000-00000000a001/rest/api/3/status/1",
+          "description": "",
+          "iconUrl": "",
+          "name": "To Do",
+          "id": "1",
+          "statusCategory": {
+            "self": "",
+            "id": 2,
+            "key": "new",
+            "colorName": "blue-gray",
+            "name": "To Do"
+          }
+        },
+        "priority": { "self": "", "iconUrl": "", "name": "Low", "id": "4" },
+        "assignee": {
+          "self": "",
+          "accountId": "5e8f3c2d4a0b9f0014c5d933",
+          "displayName": "Mei Chen",
+          "active": true,
+          "timeZone": "Europe/London",
+          "accountType": "atlassian"
+        },
+        "reporter": {
+          "self": "",
+          "accountId": "5b10ac8d82e05b22cc7d4ef5",
+          "emailAddress": "alex@acme.example",
+          "displayName": "Alex Kim",
+          "active": true,
+          "timeZone": "Europe/London",
+          "accountType": "atlassian"
+        },
+        "issuetype": {
+          "self": "",
+          "id": "10001",
+          "description": "",
+          "iconUrl": "",
+          "name": "Task",
+          "subtask": false
+        },
+        "project": {
+          "self": "",
+          "id": "10000",
+          "key": "PROJ",
+          "name": "Project",
+          "projectTypeKey": "software"
+        },
+        "created": "2026-09-22T08:00:00.000+0000",
+        "updated": "2026-09-28T10:00:00.000+0000",
+        "description": {
+          "type": "doc",
+          "version": 1,
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Limits changed in 4.1; the docs still show the old numbers."
+                }
+              ]
+            }
+          ]
+        },
+        "issuelinks": [],
+        "comment": { "comments": [], "self": "", "maxResults": 0, "total": 0, "startAt": 0 }
+      }
+    },
+    {
+      "expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
+      "id": "10482",
+      "self": "https://api.atlassian.com/ex/jira/1a2b3c4d-0000-4000-8000-00000000a001/rest/api/3/issue/10482",
+      "key": "PROJ-482",
+      "fields": {
+        "summary": "Checkout fails when the promo code is applied twice",
+        "status": {
+          "self": "",
+          "description": "",
+          "iconUrl": "",
+          "name": "In Progress",
+          "id": "3",
+          "statusCategory": {
+            "self": "",
+            "id": 4,
+            "key": "indeterminate",
+            "colorName": "yellow",
+            "name": "In Progress"
+          }
+        },
+        "priority": { "self": "", "iconUrl": "", "name": "High", "id": "2" },
+        "assignee": {
+          "self": "",
+          "accountId": "5b10ac8d82e05b22cc7d4ef5",
+          "emailAddress": "alex@acme.example",
+          "displayName": "Alex Kim",
+          "active": true,
+          "timeZone": "Europe/London",
+          "accountType": "atlassian"
+        },
+        "reporter": {
+          "self": "",
+          "accountId": "5c3a1f0e9b7d4a0012f3a911",
+          "displayName": "Priya Raman",
+          "active": true,
+          "timeZone": "Asia/Kolkata",
+          "accountType": "atlassian"
+        },
+        "issuetype": {
+          "self": "",
+          "id": "10004",
+          "description": "",
+          "iconUrl": "",
+          "name": "Bug",
+          "subtask": false
+        },
+        "project": {
+          "self": "",
+          "id": "10000",
+          "key": "PROJ",
+          "name": "Project",
+          "projectTypeKey": "software"
+        },
+        "created": "2026-09-24T09:12:00.000+0000",
+        "updated": "2026-09-28T10:05:00.000+0000",
+        "description": {
+          "type": "doc",
+          "version": 1,
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Applying the same promo code twice returns a 500 from the "
+                },
+                { "type": "text", "text": "cart service", "marks": [{ "type": "code" }] },
+                { "type": "text", "text": "." }
+              ]
+            },
+            {
+              "type": "orderedList",
+              "attrs": { "order": 1 },
+              "content": [
+                {
+                  "type": "listItem",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [{ "type": "text", "text": "Add item to cart" }]
+                    }
+                  ]
+                },
+                {
+                  "type": "listItem",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [{ "type": "text", "text": "Apply SAVE10 twice" }]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "issuelinks": [
+          {
+            "id": "20001",
+            "self": "",
+            "type": {
+              "id": "10000",
+              "name": "Blocks",
+              "inward": "is blocked by",
+              "outward": "blocks",
+              "self": ""
+            },
+            "outwardIssue": {
+              "id": "10490",
+              "key": "PROJ-490",
+              "self": "",
+              "fields": {
+                "summary": "Release checklist for 4.2",
+                "status": {
+                  "name": "To Do",
+                  "id": "1",
+                  "statusCategory": { "id": 2, "key": "new", "name": "To Do" }
+                },
+                "priority": { "name": "Medium", "id": "3" },
+                "issuetype": { "name": "Task" }
+              }
+            }
+          },
+          {
+            "id": "20002",
+            "self": "",
+            "type": {
+              "id": "10000",
+              "name": "Blocks",
+              "inward": "is blocked by",
+              "outward": "blocks",
+              "self": ""
+            },
+            "outwardIssue": {
+              "id": "10491",
+              "key": "PROJ-491",
+              "self": "",
+              "fields": {
+                "summary": "QA pass on checkout",
+                "status": {
+                  "name": "To Do",
+                  "id": "1",
+                  "statusCategory": { "id": 2, "key": "new", "name": "To Do" }
+                },
+                "priority": { "name": "Medium", "id": "3" },
+                "issuetype": { "name": "Task" }
+              }
+            }
+          },
+          {
+            "id": "20003",
+            "self": "",
+            "type": {
+              "id": "10000",
+              "name": "Blocks",
+              "inward": "is blocked by",
+              "outward": "blocks",
+              "self": ""
+            },
+            "outwardIssue": {
+              "id": "10400",
+              "key": "PROJ-400",
+              "self": "",
+              "fields": {
+                "summary": "Old release",
+                "status": {
+                  "name": "Done",
+                  "id": "10002",
+                  "statusCategory": { "id": 3, "key": "done", "name": "Done" }
+                },
+                "priority": { "name": "Medium", "id": "3" },
+                "issuetype": { "name": "Task" }
+              }
+            }
+          },
+          {
+            "id": "20004",
+            "self": "",
+            "type": {
+              "id": "10003",
+              "name": "Relates",
+              "inward": "relates to",
+              "outward": "relates to",
+              "self": ""
+            },
+            "outwardIssue": {
+              "id": "10301",
+              "key": "PROJ-301",
+              "self": "",
+              "fields": { "status": { "name": "To Do", "statusCategory": { "key": "new" } } }
+            }
+          }
+        ],
+        "comment": {
+          "comments": [
+            {
+              "self": "",
+              "id": "30000",
+              "author": {
+                "accountId": "5d7e2b1c3f9a8e0013b4c822",
+                "displayName": "Sam Ortiz",
+                "active": true
+              },
+              "body": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [{ "type": "text", "text": "Seeing this in staging too." }]
+                  }
+                ]
+              },
+              "created": "2026-09-26T09:00:00.000+0000",
+              "updated": "2026-09-26T09:00:00.000+0000",
+              "jsdPublic": true
+            },
+            {
+              "self": "",
+              "id": "30001",
+              "author": {
+                "accountId": "5c3a1f0e9b7d4a0012f3a911",
+                "displayName": "Priya Raman",
+                "active": true
+              },
+              "body": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "mention",
+                        "attrs": {
+                          "id": "5b10ac8d82e05b22cc7d4ef5",
+                          "text": "@Alex Kim",
+                          "accessLevel": ""
+                        }
+                      },
+                      { "type": "text", "text": " any update? QA is waiting." },
+                      { "type": "hardBreak" },
+                      { "type": "text", "text": "See " },
+                      {
+                        "type": "text",
+                        "text": "the runbook",
+                        "marks": [
+                          {
+                            "type": "link",
+                            "attrs": { "href": "https://acme.atlassian.net/wiki/x/QQAB" }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              "created": "2026-09-28T10:05:00.000+0000",
+              "updated": "2026-09-28T10:05:00.000+0000",
+              "jsdPublic": true
+            }
+          ],
+          "self": "",
+          "maxResults": 2,
+          "total": 2,
+          "startAt": 0
+        }
+      }
+    }
+  ],
+  "nextPageToken": "CAEaAggB",
+  "isLast": false
+}

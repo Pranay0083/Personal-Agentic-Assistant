@@ -1,0 +1,7 @@
+{
+  "access_token": "eyJraWQiOiJmYWtlIiwiYWxnIjoiUlMyNTYifQ.read-access-2.sig",
+  "refresh_token": "eyJraWQiOiJmYWtlIn0.refresh-2-rotated.sig",
+  "expires_in": 3600,
+  "scope": "read:jira-work read:jira-user manage:jira-webhook read:confluence-content.all search:confluence read:me offline_access",
+  "token_type": "Bearer"
+}

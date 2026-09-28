@@ -1,0 +1,33 @@
+{
+  "issues": [
+    {
+      "expand": "renderedFields,names,schema,operations,editmeta,changelog,versionedRepresentations",
+      "id": "10500",
+      "self": "https://api.atlassian.com/ex/jira/1a2b3c4d-0000-4000-8000-00000000a001/rest/api/3/issue/10500",
+      "key": "PROJ-500",
+      "fields": {
+        "summary": "Flaky login test",
+        "status": {
+          "name": "To Do",
+          "id": "1",
+          "statusCategory": { "id": 2, "key": "new", "name": "To Do" }
+        },
+        "priority": null,
+        "assignee": null,
+        "reporter": {
+          "accountId": "5c3a1f0e9b7d4a0012f3a911",
+          "displayName": "Priya Raman",
+          "active": true
+        },
+        "issuetype": { "name": "Bug", "subtask": false },
+        "project": { "id": "10000", "key": "PROJ", "name": "Project" },
+        "created": "2026-09-28T10:06:30.000+0000",
+        "updated": "2026-09-28T10:06:30.000+0000",
+        "description": null,
+        "issuelinks": [],
+        "comment": { "comments": [], "maxResults": 0, "total": 0, "startAt": 0 }
+      }
+    }
+  ],
+  "isLast": true
+}

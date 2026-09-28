@@ -1,0 +1,29 @@
+{
+  "issues": [
+    {
+      "id": "10490",
+      "key": "PROJ-490",
+      "self": "",
+      "fields": {
+        "assignee": {
+          "accountId": "5c3a1f0e9b7d4a0012f3a911",
+          "displayName": "Priya Raman",
+          "active": true
+        }
+      }
+    },
+    {
+      "id": "10491",
+      "key": "PROJ-491",
+      "self": "",
+      "fields": {
+        "assignee": {
+          "accountId": "5d7e2b1c3f9a8e0013b4c822",
+          "displayName": "Sam Ortiz",
+          "active": true
+        }
+      }
+    }
+  ],
+  "isLast": true
+}

@@ -1,0 +1,17 @@
+{
+  "timestamp": 1790590200000,
+  "webhookEvent": "jira:issue_updated",
+  "issue_event_type_name": "issue_generic",
+  "matchedWebhookIds": [1000],
+  "user": { "accountId": "5c3a1f0e9b7d4a0012f3a911", "displayName": "Priya Raman" },
+  "issue": {
+    "id": "10482",
+    "key": "PROJ-482",
+    "self": "https://api.atlassian.com/ex/jira/1a2b3c4d-0000-4000-8000-00000000a001/rest/api/2/issue/10482",
+    "fields": { "summary": "Checkout fails when the promo code is applied twice" }
+  },
+  "changelog": {
+    "id": "50001",
+    "items": [{ "field": "status", "fromString": "To Do", "toString": "In Progress" }]
+  }
+}

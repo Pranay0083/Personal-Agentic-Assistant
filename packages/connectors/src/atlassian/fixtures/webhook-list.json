@@ -1,0 +1,32 @@
+{
+  "maxResults": 100,
+  "startAt": 0,
+  "total": 2,
+  "isLast": true,
+  "values": [
+    {
+      "id": 1000,
+      "jqlFilter": "assignee = \"5b10ac8d82e05b22cc7d4ef5\"",
+      "events": [
+        "jira:issue_created",
+        "jira:issue_updated",
+        "jira:issue_deleted",
+        "comment_created",
+        "comment_updated"
+      ],
+      "expirationDate": "2026-10-20T10:00:00.000Z"
+    },
+    {
+      "id": 1001,
+      "jqlFilter": "reporter = \"5b10ac8d82e05b22cc7d4ef5\"",
+      "events": [
+        "jira:issue_created",
+        "jira:issue_updated",
+        "jira:issue_deleted",
+        "comment_created",
+        "comment_updated"
+      ],
+      "expirationDate": "2026-10-20T10:00:00.000Z"
+    }
+  ]
+}
