@@ -6,10 +6,22 @@
   "exports": {
     ".": "./src/index.ts",
     "./gmail": "./src/gmail/index.ts",
-    "./gmail/fake": "./src/gmail/fake-entry.ts"
+    "./gmail/fake": "./src/gmail/fake-entry.ts",
+    "./microsoft": "./src/microsoft/index.ts",
+    "./slack": "./src/slack/index.ts",
+    "./atlassian": "./src/atlassian/index.ts",
+    "./notion": "./src/notion/index.ts",
+    "./github": "./src/github/index.ts",
+    "./lib": "./src/lib/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "fake:microsoft": "tsx scripts/fake-microsoft.ts",
+    "fake:slack": "tsx scripts/fake-slack.ts",
+    "fake:atlassian": "tsx scripts/fake-atlassian.ts",
+    "fake:notion": "tsx scripts/fake-notion.ts",
+    "fake:github": "tsx scripts/fake-github.ts",
+    "fake:google": "tsx scripts/fake-google.ts"
   },
   "dependencies": {
     "@googleapis/gmail": "^22.0.1",

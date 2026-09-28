@@ -78,9 +78,3 @@ Work one phase at a time. Tick boxes as you go. Each phase ends with its accepta
 - [x] Connectors screen with per-account status and reconnect (Gmail only so far)
 
 **Accept:** each connector passes its fixture tests and a live smoke test; switching triage to Groq and planning to Bedrock works, and killing a provider falls back cleanly.
-
-## Phase 6 — Later
-
-- [ ] Mac helper app (Obsidian vault, Apple Notes, Reminders, iMessage) pushing to the API
-- [ ] Local models via Ollama
-- [ ] Data export and "delete everything" flow end to end

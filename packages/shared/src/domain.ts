@@ -26,6 +26,12 @@ export const AccountFilters = z.object({
   sent: z.boolean().default(true),
   promotions: z.boolean().default(false),
   labels: z.array(z.string()).default([]),
+  /** Whole sources on/off (e.g. Google `calendar`, Slack `dms`); ids come from the connector catalog. */
+  sources: z.record(z.string(), z.boolean()).default({}),
+  /** Other provider-specific choices declared in the catalog (e.g. Slack `channels: 'joined'`). */
+  options: z
+    .record(z.string(), z.union([z.boolean(), z.string(), z.array(z.string())]))
+    .default({}),
 });
 export type AccountFilters = z.infer<typeof AccountFilters>;
 
@@ -104,20 +110,61 @@ export type ProposalStatus = z.infer<typeof ProposalStatus>;
 export const ProposalAction = z.enum([
   'gmail.send',
   'gmail.label',
-  'jira.transition',
+  'outlook.send',
   'slack.post',
+  'jira.transition',
+  'jira.comment',
 ]);
 export type ProposalAction = z.infer<typeof ProposalAction>;
 
-export const GmailSendPayload = z.object({
+/** Email reply or new message. Used by `gmail.send` and `outlook.send`. */
+export const EmailSendPayload = z.object({
   to: z.array(z.email()).min(1),
   cc: z.array(z.email()).default([]),
   subject: z.string(),
   body: z.string(),
+  /** RFC 822 Message-ID being replied to (Gmail) or provider message id (Outlook). */
   inReplyTo: z.string().optional(),
   threadId: z.string().optional(),
 });
-export type GmailSendPayload = z.infer<typeof GmailSendPayload>;
+export type EmailSendPayload = z.infer<typeof EmailSendPayload>;
+export const GmailSendPayload = EmailSendPayload;
+export type GmailSendPayload = EmailSendPayload;
+
+/** Post to a Slack conversation. Channel and thread come from the stored item, never from a model. */
+export const SlackPostPayload = z.object({
+  channel: z.string().min(1),
+  text: z.string().min(1).max(4000),
+  threadTs: z.string().optional(),
+});
+export type SlackPostPayload = z.infer<typeof SlackPostPayload>;
+
+const IssueKey = z.string().regex(/^[A-Z][A-Z0-9_]+-\d+$/);
+
+/** Move a Jira issue through a transition, optionally with a comment. */
+export const JiraTransitionPayload = z.object({
+  issueKey: IssueKey,
+  transitionId: z.string().min(1),
+  /** Target status name, for display in Approvals. */
+  toStatus: z.string(),
+  comment: z.string().max(10000).optional(),
+});
+export type JiraTransitionPayload = z.infer<typeof JiraTransitionPayload>;
+
+export const JiraCommentPayload = z.object({
+  issueKey: IssueKey,
+  body: z.string().min(1).max(10000),
+});
+export type JiraCommentPayload = z.infer<typeof JiraCommentPayload>;
+
+/** Payload schema per action. The API (edits), MCP (propose) and executor all validate with these. */
+export const PROPOSAL_PAYLOADS = {
+  'gmail.send': EmailSendPayload,
+  'outlook.send': EmailSendPayload,
+  'slack.post': SlackPostPayload,
+  'jira.transition': JiraTransitionPayload,
+  'jira.comment': JiraCommentPayload,
+} as const;
 
 export const Proposal = z.object({
   id: z.uuid(),

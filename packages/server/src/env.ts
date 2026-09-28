@@ -52,6 +52,33 @@ const EnvSchema = z.object({
   GMAIL_PUBSUB_AUDIENCE: z.string().optional(),
   GMAIL_PUBSUB_SERVICE_ACCOUNT: z.string().optional(),
   GMAIL_FAKE: bool,
+  /** Google Workspace Events API → Pub/Sub topic for Google Chat message events. */
+  GOOGLE_EVENTS_PUBSUB_TOPIC: z.string().optional(),
+  GOOGLE_EVENTS_PUBSUB_AUDIENCE: z.string().optional(),
+
+  /** 1 = every connector serves recorded fixtures (demo mode). Refused in production. */
+  CONNECTORS_FAKE: bool,
+
+  MS_CLIENT_ID: z.string().optional(),
+  MS_CLIENT_SECRET: z.string().optional(),
+  MS_TENANT: z.string().default('common'),
+
+  SLACK_CLIENT_ID: z.string().optional(),
+  SLACK_CLIENT_SECRET: z.string().optional(),
+  SLACK_SIGNING_SECRET: z.string().optional(),
+
+  ATLASSIAN_CLIENT_ID: z.string().optional(),
+  ATLASSIAN_CLIENT_SECRET: z.string().optional(),
+
+  NOTION_CLIENT_ID: z.string().optional(),
+  NOTION_CLIENT_SECRET: z.string().optional(),
+  NOTION_WEBHOOK_VERIFICATION_TOKEN: z.string().optional(),
+
+  GITHUB_APP_ID: z.string().optional(),
+  GITHUB_APP_SLUG: z.string().optional(),
+  GITHUB_CLIENT_ID: z.string().optional(),
+  GITHUB_CLIENT_SECRET: z.string().optional(),
+  GITHUB_WEBHOOK_SECRET: z.string().optional(),
 
   MODEL_PROVIDER: z.enum(['anthropic', 'fake']).default('anthropic'),
   ANTHROPIC_API_KEY: z.string().optional(),
@@ -69,6 +96,7 @@ export function productionProblems(e: Env): string[] {
   if (e.SESSION_SECRET === DEV_SESSION_SECRET) out.push('SESSION_SECRET is the public default');
   if (e.DEV_AUTH) out.push('DEV_AUTH must be off');
   if (e.GMAIL_FAKE) out.push('GMAIL_FAKE must be off');
+  if (e.CONNECTORS_FAKE) out.push('CONNECTORS_FAKE must be off');
   if (e.MODEL_PROVIDER === 'fake') out.push('MODEL_PROVIDER=fake is not allowed');
   if (e.PUSH_FAKE) out.push('PUSH_FAKE must be off');
   if (e.SECRETS_PROVIDER === 'local') out.push('SECRETS_PROVIDER=local is not allowed');

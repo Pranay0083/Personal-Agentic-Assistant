@@ -88,7 +88,18 @@ export const accounts = pgTable(
     /** Write-scope token from a separate consent; only the executor decrypts it. */
     writeTokenRef: uuid('write_token_ref').references(() => secrets.id, { onDelete: 'set null' }),
     filters: jsonb('filters').notNull().default({}),
+    /** Deprecated: per-source cursors live on `subscriptions.cursor`. Kept for old rows. */
     syncCursor: text('sync_cursor'),
+    /** Non-secret provider identity data: Slack team id, Atlassian cloud id and site URL, tenant. */
+    meta: jsonb('meta').notNull().default({}),
+    /**
+     * Keys webhooks are routed by when the provider doesn't send our external id
+     * (Slack team id, GitHub installation ids, Atlassian cloud id, Notion workspace id).
+     */
+    routeKeys: text('route_keys')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     isPersonal: boolean('is_personal').notNull().default(false),
     backfillDays: integer('backfill_days').notNull().default(30),
     lastSyncedAt: ts('last_synced_at'),
@@ -97,9 +108,15 @@ export const accounts = pgTable(
   (t) => [
     unique('accounts_user_provider_external').on(t.userId, t.provider, t.externalId),
     index('accounts_provider_external_idx').on(t.provider, t.externalId),
+    index('accounts_route_keys_idx').using('gin', t.routeKeys),
   ],
 );
 
+/**
+ * One row per (account, source): a Google account has sources `mail`, `calendar`, `drive`,
+ * `chat`; Microsoft has `mail`, `calendar`, `teams`, `onedrive`; and so on. Holds the push
+ * subscription (if the source has one) and the delta cursor. `kind` is the source id.
+ */
 export const subscriptions = pgTable(
   'subscriptions',
   {
@@ -110,10 +127,21 @@ export const subscriptions = pgTable(
     kind: text('kind').notNull(),
     externalSubId: text('external_sub_id'),
     expiresAt: ts('expires_at'),
+    /** Delta cursor for this source (history id, delta link, sync token, timestamp). */
+    cursor: text('cursor'),
+    /**
+     * Non-secret subscription data. Webhook shared secrets (Graph clientState, Google
+     * channel token) are stored only as `secretHash` and compared by the gateway.
+     */
+    meta: jsonb('meta').notNull().default({}),
+    enabled: boolean('enabled').notNull().default(true),
     createdAt: createdAt(),
     updatedAt: ts('updated_at').notNull().defaultNow(),
   },
-  (t) => [unique('subscriptions_account_kind').on(t.accountId, t.kind)],
+  (t) => [
+    unique('subscriptions_account_kind').on(t.accountId, t.kind),
+    index('subscriptions_external_sub_idx').on(t.externalSubId),
+  ],
 );
 
 /** Raw webhook events. `provider_event_id` is namespaced `<provider>:<id>` and unique for dedupe. */

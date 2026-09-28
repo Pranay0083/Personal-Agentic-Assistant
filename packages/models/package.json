@@ -10,7 +10,9 @@
     "typecheck": "tsc -p ."
   },
   "dependencies": {
+    "@anthropic-ai/bedrock-sdk": "^0.33.8",
     "@anthropic-ai/sdk": "^0.128.0",
+    "@anthropic-ai/vertex-sdk": "^0.19.11",
     "@hub/db": "workspace:*",
     "@hub/server": "workspace:*",
     "@hub/shared": "workspace:*",

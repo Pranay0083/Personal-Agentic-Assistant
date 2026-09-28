@@ -20,7 +20,8 @@ export const ACTION_RESOURCES: ActionResource[] = [
 
 /** Which resources each provider actually holds. Anything else is denied outright. */
 export const PROVIDER_RESOURCES: Record<string, string[]> = {
-  gmail: ['email', 'calendar', 'files', 'message.send', 'email.label'],
+  // `gmail` is the Google account: Gmail, Calendar, Drive and (Workspace only) Chat.
+  gmail: ['email', 'calendar', 'files', 'chat', 'message.send', 'email.label'],
   microsoft: ['email', 'chat', 'calendar', 'files', 'message.send', 'email.label'],
   slack: ['chat', 'files', 'message.send'],
   atlassian: ['tickets', 'notes', 'ticket.update'],

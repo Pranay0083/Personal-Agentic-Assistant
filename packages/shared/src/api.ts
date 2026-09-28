@@ -13,6 +13,7 @@ import {
   ItemBucket,
   ItemKind,
   Proposal,
+  ProposalAction,
   Provider,
   Role,
   Task,
@@ -73,10 +74,47 @@ export const AccountsRes = z.object({ accounts: z.array(Account) });
 // someone else from attaching your mailbox to their account.
 export const ConnectReq = z.object({ redirectUri: z.string().optional() });
 export const ConnectRes = z.object({ url: z.string() });
+// GET /connectors -> ConnectorCatalogRes  (drives the Connect and Scope screens)
+export const ConnectorSource = z.object({
+  id: z.string(),
+  label: z.string(),
+  hint: z.string().nullable(),
+  kind: ItemKind,
+  defaultOn: z.boolean(),
+});
+export const ConnectorOption = z.object({
+  key: z.string(),
+  label: z.string(),
+  hint: z.string().nullable(),
+  type: z.enum(['boolean', 'choice']),
+  choices: z.array(z.object({ value: z.string(), label: z.string() })).default([]),
+  default: z.union([z.boolean(), z.string()]),
+});
+export const ConnectorInfo = z.object({
+  provider: Provider,
+  name: z.string(),
+  /** e.g. "Outlook, Teams, OneDrive". */
+  covers: z.string(),
+  /** e.g. "One per workspace", "per site". */
+  multiAccountNote: z.string().nullable(),
+  /** Configured on this server (client id and secret present, or fake mode). */
+  available: z.boolean(),
+  sources: z.array(ConnectorSource),
+  options: z.array(ConnectorOption),
+  /** Write actions this connector supports once write access is granted. */
+  writeActions: z.array(ProposalAction),
+});
+export type ConnectorInfo = z.infer<typeof ConnectorInfo>;
+export const ConnectorCatalogRes = z.object({ connectors: z.array(ConnectorInfo) });
+export type ConnectorCatalogRes = z.infer<typeof ConnectorCatalogRes>;
+
 // POST /accounts/complete -> CompleteConnectRes
+// One consent can add several accounts (e.g. every Atlassian site the user can see); they
+// share the grant. `accounts` lists all of them; `account` is the first.
 export const CompleteConnectReq = z.object({ pending: z.string().min(16).max(128) });
 export const CompleteConnectRes = z.object({
   account: Account,
+  accounts: z.array(Account).default([]),
   access: z.enum(['read', 'write']),
 });
 export type CompleteConnectRes = z.infer<typeof CompleteConnectRes>;

@@ -7,6 +7,7 @@ import type {
   OAuthTokens,
   SubscriptionInfo,
   VerifyResult,
+  ConnectorInfo,
 } from '../types';
 import {
   fromCredentials,
@@ -81,6 +82,16 @@ function checkScopes(scope: string | undefined, access: AccessKind) {
     throw new ConnectorError('gmail', 'read grant unexpectedly includes write scopes');
   }
 }
+
+/** Catalog entry. The Google Workspace sources (calendar, drive, chat) are added in Phase 5. */
+export const GMAIL_INFO: ConnectorInfo = {
+  name: 'Google',
+  covers: 'Gmail, Calendar, Drive · one sign-in each',
+  multiAccountNote: null,
+  sources: [{ id: 'mail', label: 'Gmail', hint: null, kind: 'email', defaultOn: true }],
+  options: [],
+  writeActions: ['gmail.send'],
+};
 
 export function createGmailConnector(opts: GmailConnectorOptions = {}): Connector<GmailRecord> {
   const cfg = (): GmailConfig =>
@@ -176,6 +187,11 @@ export function createGmailConnector(opts: GmailConnectorOptions = {}): Connecto
 
   const connector: Connector<GmailRecord> = {
     provider: 'gmail',
+    info: GMAIL_INFO,
+    configured() {
+      const c = cfg();
+      return c.fake || (!!c.clientId && !!c.clientSecret);
+    },
 
     connect: {
       authUrl({ state, redirectUri, access, loginHint }) {
@@ -236,7 +252,14 @@ export function createGmailConnector(opts: GmailConnectorOptions = {}): Connecto
             tokens,
             saveTokens: async () => {},
             cursor: null,
-            filters: { inbox: true, sent: true, promotions: false, labels: [] },
+            filters: {
+              inbox: true,
+              sent: true,
+              promotions: false,
+              labels: [],
+              sources: {},
+              options: {},
+            },
           };
           const profile = await withClient(ctx, (api) => api.getProfile());
           externalId = profile.emailAddress?.toLowerCase() ?? null;
