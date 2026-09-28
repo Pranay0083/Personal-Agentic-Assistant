@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Choose models</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#E9E6DE}
+a{color:#1F6F6B}a:hover{color:#174F4C}
+button,input{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; gap: 12px; padding: 12px 20px 24px; background: #F6F4EF; color: #1B1A17; font-family: 'IBM Plex Sans', system-ui, sans-serif; overflow: hidden">
+<div style="display: flex; align-items: center; justify-content: space-between; min-height: 44px">
+<a href="Presets.dc.html" aria-label="Back" style="width: 44px; height: 44px; display: flex; align-items: center; color: #1B1A17"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></a>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.08em; color: #5E5A52">STEP 5 OF 7</span>
+<span style="width: 44px"></span>
+</div>
+<div style="display: flex; gap: 4px"><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #1F6F6B"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #1F6F6B"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #1F6F6B"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #1F6F6B"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #1F6F6B"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #DDD8CC"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #DDD8CC"></span></div>
+<div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px">
+<h1 style="margin: 0; font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; font-size: 34px; line-height: 1.05">Choose your models</h1>
+<p style="margin: 0; font-size: 14px; line-height: 1.45; color: #5E5A52">Change any agent later. Keys stay encrypted on your server, never on this phone.</p>
+</div>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 12px; background: #ECE8DF; flex-shrink: 0">
+<sc-for list="{{ opts }}" as="o" hint-placeholder-count="3">
+<button onClick="{{ o.pick }}" aria-pressed="{{ o.pressed }}" style="{{ o.style }}">{{ o.title }}</button>
+</sc-for>
+</div>
+<p style="margin: -4px 0 0; font-size: 13px; line-height: 1.45; color: #3A372F">{{ optBody }}</p>
+<sc-if value="{{ showRec }}" hint-placeholder-val="{{ false }}">
+<div style="display: flex; flex-direction: column; background: #FFFFFF; border: 1px solid #E4E0D6; border-radius: 14px">
+<div style="display: flex; justify-content: space-between; align-items: center; min-height: 44px; padding: 0 14px"><span style="font-size: 14px">Triage</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #174F4C">HAIKU 4.5</span></div>
+<div style="display: flex; justify-content: space-between; align-items: center; min-height: 44px; padding: 0 14px; border-top: 1px solid #EEEAE1"><span style="font-size: 14px">Brief and replies</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #174F4C">SONNET 5</span></div>
+<div style="display: flex; justify-content: space-between; align-items: center; min-height: 44px; padding: 0 14px; border-top: 1px solid #EEEAE1"><span style="font-size: 14px">Planning</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #174F4C">OPUS 5.5</span></div>
+</div>
+</sc-if>
+<sc-if value="{{ showKey }}" hint-placeholder-val="{{ true }}">
+<section style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 12px; font-weight: 600; color: #5E5A52">Provider</span>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px">
+<sc-for list="{{ providers }}" as="p" hint-placeholder-count="8">
+<button onClick="{{ p.pick }}" aria-pressed="{{ p.pressed }}" style="{{ p.style }}">{{ p.label }}</button>
+</sc-for>
+</div>
+</section>
+<section style="display: flex; flex-direction: column; gap: 10px; padding: 14px; background: #FFFFFF; border: 1px solid #E4E0D6; border-radius: 14px">
+<span style="display: flex; flex-direction: column; gap: 2px"><span style="font-size: 15px; font-weight: 600">{{ provName }}</span><span style="font-size: 12px; line-height: 1.4; color: #5E5A52">{{ provNote }}</span></span>
+<sc-for list="{{ fields }}" as="f" hint-placeholder-count="2">
+<div style="display: flex; flex-direction: column; gap: 5px">
+<label for="{{ f.id }}" style="font-size: 12px; font-weight: 600; color: #5E5A52">{{ f.label }}</label>
+<input id="{{ f.id }}" type="{{ f.type }}" placeholder="{{ f.ph }}" style="height: 44px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #D8D3C7; background: #F6F4EF; font-size: 14px; color: #1B1A17">
+</div>
+</sc-for>
+</section>
+<div style="display: flex; align-items: center; gap: 12px; padding: 10px 14px; background: #FFFFFF; border: 1px solid #E4E0D6; border-radius: 14px">
+<span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1"><span style="font-size: 14px; font-weight: 500">Fall back if it's down</span><span style="font-size: 12px; color: #5E5A52">Switch to Recommended until it recovers</span></span>
+<button onClick="{{ toggleFb }}" aria-pressed="{{ fbPressed }}" aria-label="Fall back if the provider is down" style="{{ track }}"><span style="{{ knob }}"></span></button>
+</div>
+</sc-if>
+<sc-if value="{{ showLocal }}" hint-placeholder-val="{{ false }}">
+<p style="margin: 0; padding: 12px 14px; border-radius: 12px; background: #FBF4EA; border: 1px solid #E8CFB0; font-size: 13px; line-height: 1.45; color: #6B4A2A">Needs the Mac helper with Ollama running. Slower, and your data never leaves your machine.</p>
+</sc-if>
+<div style="flex-grow: 1"></div>
+<a href="Agents.dc.html" style="display: flex; align-items: center; justify-content: center; min-height: 52px; border-radius: 14px; background: #1B1A17; color: #FFFFFF; font-size: 16px; font-weight: 600; text-decoration: none">Continue</a>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const pick = st.pick || 'key';
+    const prov = st.prov || 'bedrock';
+    const fb = st.fb === undefined ? true : st.fb;
+    const segOn = 'min-height: 40px; border-radius: 9px; border: 0; background: #FFFFFF; color: #1B1A17; font-size: 13px; font-weight: 600; cursor: pointer';
+    const segOff = 'min-height: 40px; border-radius: 9px; border: 0; background: transparent; color: #4A463F; font-size: 13px; font-weight: 500; cursor: pointer';
+    const O = [
+      ['rec', 'Recommended', 'A fast model for triage, stronger ones for writing and planning.'],
+      ['key', 'Own provider', 'Use your own cloud, API key or router, and your own billing.'],
+      ['local', 'Local only', 'Runs on your Mac. Most private.']
+    ];
+    const P = {
+      anthropic: ['Anthropic', 'Claude models with your own API key.', [['API key', 'password', 'sk-ant-…']]],
+      openai: ['OpenAI', 'GPT models with your own API key.', [['API key', 'password', 'sk-…'], ['Organization ID (optional)', 'text', 'org-…']]],
+      groq: ['Groq', 'Very fast open models. A good fit for triage.', [['API key', 'password', 'gsk_…']]],
+      bedrock: ['AWS Bedrock', 'Claude and other models inside your AWS account and region.', [['Region', 'text', 'us-east-1'], ['IAM role ARN or access key', 'text', 'arn:aws:iam::…:role/…']]],
+      vertex: ['Google Vertex AI', 'Claude and Gemini through your Google Cloud project.', [['Project ID', 'text', 'my-project'], ['Region', 'text', 'us-east5']]],
+      azure: ['Azure OpenAI', 'OpenAI models in your Azure tenant.', [['Endpoint URL', 'url', 'https://[name].openai.azure.com'], ['API key', 'password', 'Paste key']]],
+      openrouter: ['OpenRouter', 'Many models behind one key, with routing and fallbacks.', [['API key', 'password', 'sk-or-…']]],
+      gateway: ['Custom gateway', 'Any OpenAI-compatible router: OmniRoute, LiteLLM, Portkey or your own.', [['Base URL', 'url', 'https://[your-router]/v1'], ['API key', 'password', 'Paste key']]]
+    };
+    const order = [['anthropic', 'Anthropic'], ['openai', 'OpenAI'], ['groq', 'Groq'], ['bedrock', 'Bedrock'], ['vertex', 'Vertex AI'], ['azure', 'Azure'], ['openrouter', 'OpenRouter'], ['gateway', 'Gateway']];
+    const chipOn = 'min-height: 44px; padding: 0 4px; border-radius: 10px; border: 2px solid #1F6F6B; background: #E3EFEC; color: #174F4C; font-size: 12px; font-weight: 600; cursor: pointer';
+    const chipOff = 'min-height: 44px; padding: 0 4px; border-radius: 10px; border: 2px solid #E4E0D6; background: #FFFFFF; color: #1B1A17; font-size: 12px; font-weight: 500; cursor: pointer';
+    const cur = P[prov];
+    return {
+      opts: O.map((o) => ({ title: o[1], pressed: o[0] === pick ? 'true' : 'false', style: o[0] === pick ? segOn : segOff, pick: () => this.setState({ pick: o[0] }) })),
+      optBody: O.filter((o) => o[0] === pick)[0][2],
+      showRec: pick === 'rec', showKey: pick === 'key', showLocal: pick === 'local',
+      providers: order.map((p) => ({ label: p[1], pressed: p[0] === prov ? 'true' : 'false', style: p[0] === prov ? chipOn : chipOff, pick: () => this.setState({ prov: p[0] }) })),
+      provName: cur[0], provNote: cur[1],
+      fields: cur[2].map((f, i) => ({ id: prov + '-f' + i, label: f[0], type: f[1], ph: f[2] })),
+      fbPressed: fb ? 'true' : 'false',
+      track: 'position: relative; width: 52px; height: 32px; flex-shrink: 0; border-radius: 16px; border: 0; padding: 0; cursor: pointer; background: ' + (fb ? '#1F6F6B' : '#CFCABE'),
+      knob: 'position: absolute; top: 3px; left: ' + (fb ? '23px' : '3px') + '; width: 26px; height: 26px; border-radius: 50%; background: #FFFFFF',
+      toggleFb: () => this.setState({ fb: !fb })
+    };
+  }
+}
+</script>
+</body>
+</html>

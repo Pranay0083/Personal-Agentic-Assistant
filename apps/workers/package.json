@@ -1,0 +1,29 @@
+{
+  "name": "@hub/workers",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false src/main.ts all",
+    "start": "tsx src/main.ts",
+    "start:sync": "tsx src/main.ts sync",
+    "start:backfill": "tsx src/main.ts backfill",
+    "start:agents": "tsx src/main.ts agents",
+    "start:executor": "tsx src/main.ts executor",
+    "start:notifier": "tsx src/main.ts notifier",
+    "start:scheduler": "tsx src/main.ts scheduler",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@hub/connectors": "workspace:*",
+    "@hub/db": "workspace:*",
+    "@hub/models": "workspace:*",
+    "@hub/policy": "workspace:*",
+    "@hub/server": "workspace:*",
+    "@hub/shared": "workspace:*",
+    "bullmq": "^6.3.9",
+    "drizzle-orm": "^0.45.3",
+    "expo-server-sdk": "^7.2.0",
+    "zod": "^4.6.5"
+  }
+}

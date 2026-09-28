@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Connect accounts</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#E9E6DE}
+a{color:#1F6F6B}a:hover{color:#174F4C}
+button,input{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; padding: 12px 20px 32px; background: #F6F4EF; color: #1B1A17; font-family: 'IBM Plex Sans', system-ui, sans-serif; overflow: hidden">
+<div style="display: flex; align-items: center; justify-content: space-between; min-height: 44px">
+<a href="Role.dc.html" aria-label="Back" style="width: 44px; height: 44px; display: flex; align-items: center; color: #1B1A17"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></a>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.08em; color: #5E5A52">STEP 2 OF 7</span>
+<span style="width: 44px"></span>
+</div>
+<div style="display: flex; gap: 4px"><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #1F6F6B"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #1F6F6B"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #DDD8CC"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #DDD8CC"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #DDD8CC"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #DDD8CC"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #DDD8CC"></span></div>
+<div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px">
+<h1 style="margin: 0; font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; font-size: 34px; line-height: 1.05">Connect your accounts</h1>
+<p style="margin: 0; font-size: 14px; line-height: 1.45; color: #5E5A52">Add as many as you have, like work and personal Gmail. Each one gets its own settings.</p>
+</div>
+<div style="display: flex; flex-direction: column; background: #FFFFFF; border: 1px solid #E4E0D6; border-radius: 16px; overflow: hidden">
+<sc-for list="{{ services }}" as="s" hint-placeholder-count="6">
+<div style="{{ s.blockStyle }}">
+<div style="display: flex; align-items: center; gap: 12px; min-height: 52px">
+<span style="display: flex; flex-direction: column; gap: 1px; flex-grow: 1"><span style="font-size: 15px; font-weight: 600">{{ s.name }}</span><span style="font-size: 12px; color: #5E5A52">{{ s.covers }}</span></span>
+<button onClick="{{ s.add }}" style="{{ s.btnStyle }}">{{ s.btnLabel }}</button>
+</div>
+<sc-for list="{{ s.accounts }}" as="a" hint-placeholder-count="0">
+<div style="display: flex; align-items: center; gap: 10px; min-height: 38px; padding-left: 2px">
+<span style="{{ a.dot }}"></span>
+<span style="font-size: 14px; font-weight: 500">{{ a.nick }}</span>
+<span style="font-size: 13px; color: #5E5A52; flex-grow: 1">{{ a.id }}</span>
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2F8F5B" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l4.5 4.5L19 7"></path></svg>
+</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+<div style="flex-grow: 1"></div>
+<a href="Scope.dc.html" style="display: flex; align-items: center; justify-content: center; min-height: 52px; border-radius: 14px; background: #1B1A17; color: #FFFFFF; font-size: 16px; font-weight: 600; text-decoration: none">{{ cta }}</a>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const extra = (this.state && this.state.extra) || {};
+    const colors = ['#6B4FA0', '#8A5A2B', '#3B5BA9'];
+    const S = [
+      ['google', 'Google', 'Gmail, Calendar, Drive · one sign-in each', [['Work', 'you@company.com', '#1F6F6B'], ['Personal', 'you@gmail.com', '#3B5BA9']]],
+      ['microsoft', 'Microsoft 365', 'Outlook, Teams, OneDrive', []],
+      ['slack', 'Slack', 'One per workspace', [['Company', 'company.slack.com', '#1F6F6B']]],
+      ['atlassian', 'Atlassian', 'Jira, Confluence · per site', []],
+      ['notion', 'Notion', 'Only pages you pick', []],
+      ['github', 'GitHub', 'Only repos you pick', []]
+    ];
+    let total = 0;
+    const services = S.map((s, i) => {
+      const n = extra[s[0]] || 0;
+      const accounts = s[3].map((a) => ({ nick: a[0], id: a[1], dot: 'width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; background: ' + a[2] }));
+      for (let k = 0; k < n; k++) {
+        accounts.push({ nick: 'Account ' + (accounts.length + 1), id: '[picked at sign-in]', dot: 'width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; background: ' + colors[k % 3] });
+      }
+      total += accounts.length;
+      const has = accounts.length > 0;
+      const full = accounts.length >= 4;
+      return {
+        name: s[1], covers: s[2], accounts: accounts,
+        blockStyle: 'display: flex; flex-direction: column; padding: 4px 14px ' + (has ? '10px' : '4px') + (i ? '; border-top: 1px solid #EEEAE1' : ''),
+        btnLabel: full ? 'Max 4' : (has ? '+ Add another' : 'Connect'),
+        btnStyle: has
+          ? 'min-height: 44px; padding: 0 12px; border-radius: 10px; border: 0; background: transparent; color: #1F6F6B; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap'
+          : 'min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid #1B1A17; background: #1B1A17; color: #FFFFFF; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap',
+        add: () => { if (!full) this.setState({ extra: Object.assign({}, extra, { [s[0]]: n + 1 }) }); }
+      };
+    });
+    return { services: services, cta: 'Continue · ' + total + ' accounts' };
+  }
+}
+</script>
+</body>
+</html>

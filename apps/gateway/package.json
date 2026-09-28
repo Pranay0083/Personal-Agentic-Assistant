@@ -1,0 +1,20 @@
+{
+  "name": "@hub/gateway",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@hub/connectors": "workspace:*",
+    "@hub/db": "workspace:*",
+    "@hub/server": "workspace:*",
+    "@hub/shared": "workspace:*",
+    "drizzle-orm": "^0.45.3",
+    "fastify": "^5.12.5",
+    "zod": "^4.6.5"
+  }
+}

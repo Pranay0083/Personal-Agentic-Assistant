@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Approvals</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#E9E6DE}
+a{color:#1F6F6B}a:hover{color:#174F4C}
+button,input{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; background: #F6F4EF; color: #1B1A17; font-family: 'IBM Plex Sans', system-ui, sans-serif; overflow: hidden">
+<main style="flex-grow: 1; overflow: hidden; padding: 28px 20px 12px; display: flex; flex-direction: column; gap: 14px">
+<header style="display: flex; flex-direction: column; gap: 4px">
+<h1 style="margin: 0; font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; font-size: 40px; line-height: 1">Approvals</h1>
+<span style="font-size: 13px; color: #5E5A52">Nothing leaves without you.</span>
+</header>
+<article style="display: flex; flex-direction: column; gap: 10px; padding: 16px; background: #FFFFFF; border: 1px solid #E4E0D6; border-radius: 16px">
+<div style="display: flex; justify-content: space-between; align-items: center">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.06em; color: #5E5A52">REPLY AGENT · SONNET 5</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.06em; padding: 3px 6px; border-radius: 4px; background: #ECE8DF; color: #4A463F">GMAIL</span>
+</div>
+<h2 style="margin: 0; font-size: 16px; font-weight: 600">Reply to Meera: Q3 deck timeline</h2>
+<p style="margin: 0; padding: 10px 12px; border-radius: 10px; background: #F6F4EF; font-size: 13px; line-height: 1.45; color: #3A372F">Hi Meera, I'll send a first cut of the Q3 deck by Wednesday evening so there's time to review before Thursday.</p>
+<sc-if value="{{ pending1 }}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; gap: 8px">
+<button onClick="{{ approve1 }}" style="flex-grow: 1; min-height: 44px; border-radius: 12px; border: 0; background: #1F6F6B; color: #FFFFFF; font-size: 14px; font-weight: 600; cursor: pointer">Approve &amp; send</button>
+<button style="min-height: 44px; padding: 0 16px; border-radius: 12px; border: 1px solid #D8D3C7; background: #FFFFFF; color: #1B1A17; font-size: 14px; cursor: pointer">Edit</button>
+<button onClick="{{ reject1 }}" style="min-height: 44px; padding: 0 12px; border-radius: 12px; border: 0; background: transparent; color: #5E5A52; font-size: 14px; cursor: pointer">Reject</button>
+</div>
+</sc-if>
+<sc-if value="{{ done1 }}" hint-placeholder-val="{{ false }}">
+<div style="min-height: 44px; display: flex; align-items: center; font-size: 14px; font-weight: 600; color: #174F4C">{{ status1 }}</div>
+</sc-if>
+</article>
+<article style="display: flex; flex-direction: column; gap: 10px; padding: 16px; background: #FFFFFF; border: 1px solid #E4E0D6; border-radius: 16px">
+<div style="display: flex; justify-content: space-between; align-items: center">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.06em; color: #5E5A52">TRIAGE AGENT · HAIKU 4.5</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.06em; padding: 3px 6px; border-radius: 4px; background: #ECE8DF; color: #4A463F">JIRA</span>
+</div>
+<h2 style="margin: 0; font-size: 16px; font-weight: 600">Move PROJ-482 to In Review</h2>
+<p style="margin: 0; font-size: 13px; line-height: 1.45; color: #3A372F">Also adds a comment: "Fix merged in #219, ready for QA."</p>
+<sc-if value="{{ pending2 }}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; gap: 8px">
+<button onClick="{{ approve2 }}" style="flex-grow: 1; min-height: 44px; border-radius: 12px; border: 0; background: #1F6F6B; color: #FFFFFF; font-size: 14px; font-weight: 600; cursor: pointer">Approve</button>
+<button style="min-height: 44px; padding: 0 16px; border-radius: 12px; border: 1px solid #D8D3C7; background: #FFFFFF; color: #1B1A17; font-size: 14px; cursor: pointer">Edit</button>
+<button onClick="{{ reject2 }}" style="min-height: 44px; padding: 0 12px; border-radius: 12px; border: 0; background: transparent; color: #5E5A52; font-size: 14px; cursor: pointer">Reject</button>
+</div>
+</sc-if>
+<sc-if value="{{ done2 }}" hint-placeholder-val="{{ false }}">
+<div style="min-height: 44px; display: flex; align-items: center; font-size: 14px; font-weight: 600; color: #174F4C">{{ status2 }}</div>
+</sc-if>
+</article>
+<article style="display: flex; flex-direction: column; gap: 10px; padding: 16px; background: #FBF4EA; border: 1px solid #E8CFB0; border-radius: 16px">
+<div style="display: flex; justify-content: space-between; align-items: center">
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.06em; color: #7A3E0B">PERMISSION REQUEST</span>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.06em; padding: 3px 6px; border-radius: 4px; background: #F2E0C8; color: #7A3E0B">CLAUDE CODE</span>
+</div>
+<h2 style="margin: 0; font-size: 16px; font-weight: 600">Read Gmail for 1 hour</h2>
+<p style="margin: 0; font-size: 13px; line-height: 1.45; color: #3A372F">Reason given: find the API spec thread Priya mentioned. Access ends automatically.</p>
+<sc-if value="{{ pending3 }}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; gap: 8px">
+<button onClick="{{ approve3 }}" style="flex-grow: 1; min-height: 44px; border-radius: 12px; border: 0; background: #1B1A17; color: #FFFFFF; font-size: 14px; font-weight: 600; cursor: pointer">Allow for 1 hour</button>
+<button onClick="{{ reject3 }}" style="min-height: 44px; padding: 0 18px; border-radius: 12px; border: 1px solid #D8B894; background: transparent; color: #7A3E0B; font-size: 14px; cursor: pointer">Deny</button>
+</div>
+</sc-if>
+<sc-if value="{{ done3 }}" hint-placeholder-val="{{ false }}">
+<div style="min-height: 44px; display: flex; align-items: center; font-size: 14px; font-weight: 600; color: #7A3E0B">{{ status3 }}</div>
+</sc-if>
+</article>
+</main>
+<nav aria-label="Main" style="display: flex; justify-content: space-around; padding: 6px 6px 22px; border-top: 1px solid #E4E0D6; background: #FBFAF6">
+<a href="Main.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 64px; min-height: 48px; text-decoration: none; color: #6B665C; font-size: 11px; font-weight: 500"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"></path></svg>Today</a>
+<a href="Inbox.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 64px; min-height: 48px; text-decoration: none; color: #6B665C; font-size: 11px; font-weight: 500"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 13l2.5-7h11L20 13v6H4z"></path><path d="M4 13h4.5l1 2h5l1-2H20"></path></svg>Inbox</a>
+<a href="Tasks.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 64px; min-height: 48px; text-decoration: none; color: #6B665C; font-size: 11px; font-weight: 500"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M8.5 12l2.5 2.5 4.5-5"></path></svg>Tasks</a>
+<a href="Approvals.dc.html" aria-current="page" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 64px; min-height: 48px; text-decoration: none; color: #1F6F6B; font-size: 11px; font-weight: 600"><span style="position: relative; display: flex"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"></path><path d="M9 12l2 2 4-4"></path></svg><span style="position: absolute; top: -4px; right: -9px; min-width: 16px; height: 16px; border-radius: 8px; background: #9A4F0E; color: #FFFFFF; font-size: 10px; font-weight: 600; display: flex; align-items: center; justify-content: center">{{ remaining }}</span></span>Approvals</a>
+<a href="Control.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 64px; min-height: 48px; text-decoration: none; color: #6B665C; font-size: 11px; font-weight: 500"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path><circle cx="9" cy="6" r="2" fill="#FBFAF6"></circle><circle cx="15" cy="12" r="2" fill="#FBFAF6"></circle><circle cx="8" cy="18" r="2" fill="#FBFAF6"></circle></svg>Control</a>
+</nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const s1 = st.s1 || '';
+    const s2 = st.s2 || '';
+    const s3 = st.s3 || '';
+    const remaining = [s1, s2, s3].filter((s) => !s).length;
+    return {
+      pending1: !s1, done1: !!s1, status1: s1,
+      pending2: !s2, done2: !!s2, status2: s2,
+      pending3: !s3, done3: !!s3, status3: s3,
+      remaining: remaining,
+      approve1: () => this.setState({ s1: 'Sent to Meera. Logged in Activity.' }),
+      reject1: () => this.setState({ s1: 'Rejected. Draft discarded.' }),
+      approve2: () => this.setState({ s2: 'PROJ-482 moved to In Review.' }),
+      reject2: () => this.setState({ s2: 'Rejected. Jira unchanged.' }),
+      approve3: () => this.setState({ s3: 'Allowed until 10:42. Revoke anytime in Permissions.' }),
+      reject3: () => this.setState({ s3: 'Denied. Claude Code was told no.' })
+    };
+  }
+}
+</script>
+</body>
+</html>

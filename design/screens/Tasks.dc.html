@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tasks</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#E9E6DE}
+a{color:#1F6F6B}a:hover{color:#174F4C}
+button,input{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; background: #F6F4EF; color: #1B1A17; font-family: 'IBM Plex Sans', system-ui, sans-serif; overflow: hidden">
+<main style="flex-grow: 1; overflow: hidden; padding: 28px 20px 12px; display: flex; flex-direction: column; gap: 16px">
+<header style="display: flex; justify-content: space-between; align-items: flex-end">
+<div style="display: flex; flex-direction: column; gap: 4px">
+<h1 style="margin: 0; font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; font-size: 40px; line-height: 1">Tasks</h1>
+<span style="font-size: 13px; color: #5E5A52">6 open · 1 overdue</span>
+</div>
+<button style="min-height: 44px; padding: 0 16px; border-radius: 22px; border: 0; background: #1B1A17; color: #FFFFFF; font-size: 14px; font-weight: 600; cursor: pointer">+ New</button>
+</header>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 12px; background: #ECE8DF; flex-shrink: 0">
+<button aria-pressed="true" style="min-height: 38px; border-radius: 9px; border: 0; background: #FFFFFF; color: #1B1A17; font-size: 13px; font-weight: 600">Today</button>
+<button aria-pressed="false" style="min-height: 38px; border-radius: 9px; border: 0; background: transparent; color: #4A463F; font-size: 13px; font-weight: 500">This week</button>
+<button aria-pressed="false" style="min-height: 38px; border-radius: 9px; border: 0; background: transparent; color: #4A463F; font-size: 13px; font-weight: 500">By project</button>
+</div>
+<section style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-size: 13px; font-weight: 600; color: #9A4F0E">Overdue</h2>
+<div style="display: flex; flex-direction: column; background: #FFFFFF; border: 1px solid #E4E0D6; border-radius: 14px">
+<div style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px">
+<input type="checkbox" id="t1" style="width: 22px; height: 22px; margin: 1px 0 0; accent-color: #1F6F6B; flex-shrink: 0">
+<label for="t1" style="display: flex; flex-direction: column; gap: 5px; flex-grow: 1; cursor: pointer"><span style="font-size: 15px; font-weight: 500">Review Arjun's PR #219</span><span style="display: flex; gap: 6px; align-items: center; font-size: 12px; color: #5E5A52"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.06em; padding: 3px 6px; border-radius: 4px; background: #ECE8DF; color: #4A463F">GITHUB</span><span style="color: #9A4F0E; font-weight: 500">Due yesterday</span></span></label>
+</div>
+</div>
+</section>
+<section style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-size: 13px; font-weight: 600; color: #5E5A52">Today</h2>
+<div style="display: flex; flex-direction: column; background: #FFFFFF; border: 1px solid #E4E0D6; border-radius: 14px">
+<div style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px">
+<input type="checkbox" id="t2" style="width: 22px; height: 22px; margin: 1px 0 0; accent-color: #1F6F6B; flex-shrink: 0">
+<label for="t2" style="display: flex; flex-direction: column; gap: 5px; flex-grow: 1; cursor: pointer"><span style="font-size: 15px; font-weight: 500">Send Q3 deck outline to Meera</span><span style="display: flex; gap: 6px; align-items: center; font-size: 12px; color: #5E5A52"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.06em; padding: 3px 6px; border-radius: 4px; background: #ECE8DF; color: #4A463F">GMAIL</span>From Finance thread · deck due Thu</span></label>
+</div>
+<div style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-top: 1px solid #EEEAE1">
+<input type="checkbox" id="t3" style="width: 22px; height: 22px; margin: 1px 0 0; accent-color: #1F6F6B; flex-shrink: 0">
+<label for="t3" style="display: flex; flex-direction: column; gap: 5px; flex-grow: 1; cursor: pointer"><span style="font-size: 15px; font-weight: 500">Reply to Priya about the API spec</span><span style="display: flex; gap: 6px; align-items: center; font-size: 12px; color: #5E5A52"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.06em; padding: 3px 6px; border-radius: 4px; background: #ECE8DF; color: #4A463F">SLACK</span>Draft waiting in Approvals</span></label>
+</div>
+<div style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-top: 1px solid #EEEAE1">
+<input type="checkbox" id="t4" style="width: 22px; height: 22px; margin: 1px 0 0; accent-color: #1F6F6B; flex-shrink: 0">
+<label for="t4" style="display: flex; flex-direction: column; gap: 5px; flex-grow: 1; cursor: pointer"><span style="font-size: 15px; font-weight: 500">Unblock PROJ-482</span><span style="display: flex; gap: 6px; align-items: center; font-size: 12px; color: #5E5A52"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.06em; padding: 3px 6px; border-radius: 4px; background: #ECE8DF; color: #4A463F">JIRA</span>2 teammates waiting</span></label>
+</div>
+</div>
+</section>
+<section style="display: flex; flex-direction: column; gap: 8px">
+<h2 style="margin: 0; font-size: 13px; font-weight: 600; color: #5E5A52">Later this week</h2>
+<div style="display: flex; flex-direction: column; background: #FFFFFF; border: 1px solid #E4E0D6; border-radius: 14px">
+<div style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px">
+<input type="checkbox" id="t5" style="width: 22px; height: 22px; margin: 1px 0 0; accent-color: #1F6F6B; flex-shrink: 0">
+<label for="t5" style="display: flex; flex-direction: column; gap: 5px; flex-grow: 1; cursor: pointer"><span style="font-size: 15px; font-weight: 500">Prep agenda for design review</span><span style="display: flex; gap: 6px; align-items: center; font-size: 12px; color: #5E5A52"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.06em; padding: 3px 6px; border-radius: 4px; background: #ECE8DF; color: #4A463F">CALENDAR</span>Wed 11:00</span></label>
+</div>
+<div style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-top: 1px solid #EEEAE1">
+<input type="checkbox" id="t6" style="width: 22px; height: 22px; margin: 1px 0 0; accent-color: #1F6F6B; flex-shrink: 0">
+<label for="t6" style="display: flex; flex-direction: column; gap: 5px; flex-grow: 1; cursor: pointer"><span style="font-size: 15px; font-weight: 500">Renew vendor contract</span><span style="display: flex; gap: 6px; align-items: center; font-size: 12px; color: #5E5A52"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.06em; padding: 3px 6px; border-radius: 4px; background: #ECE8DF; color: #4A463F">NOTES</span>From your Ops note · Fri</span></label>
+</div>
+</div>
+</section>
+</main>
+<nav aria-label="Main" style="display: flex; justify-content: space-around; padding: 6px 6px 22px; border-top: 1px solid #E4E0D6; background: #FBFAF6">
+<a href="Main.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 64px; min-height: 48px; text-decoration: none; color: #6B665C; font-size: 11px; font-weight: 500"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M5.6 18.4L7 17M17 7l1.4-1.4"></path></svg>Today</a>
+<a href="Inbox.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 64px; min-height: 48px; text-decoration: none; color: #6B665C; font-size: 11px; font-weight: 500"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 13l2.5-7h11L20 13v6H4z"></path><path d="M4 13h4.5l1 2h5l1-2H20"></path></svg>Inbox</a>
+<a href="Tasks.dc.html" aria-current="page" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 64px; min-height: 48px; text-decoration: none; color: #1F6F6B; font-size: 11px; font-weight: 600"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="M8.5 12l2.5 2.5 4.5-5"></path></svg>Tasks</a>
+<a href="Approvals.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 64px; min-height: 48px; text-decoration: none; color: #6B665C; font-size: 11px; font-weight: 500"><span style="position: relative; display: flex"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"></path><path d="M9 12l2 2 4-4"></path></svg><span style="position: absolute; top: -4px; right: -9px; min-width: 16px; height: 16px; border-radius: 8px; background: #9A4F0E; color: #FFFFFF; font-size: 10px; font-weight: 600; display: flex; align-items: center; justify-content: center">3</span></span>Approvals</a>
+<a href="Control.dc.html" style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 64px; min-height: 48px; text-decoration: none; color: #6B665C; font-size: 11px; font-weight: 500"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"></path><circle cx="9" cy="6" r="2" fill="#FBFAF6"></circle><circle cx="15" cy="12" r="2" fill="#FBFAF6"></circle><circle cx="8" cy="18" r="2" fill="#FBFAF6"></circle></svg>Control</a>
+</nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

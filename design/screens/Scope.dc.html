@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Set up an account</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#E9E6DE}
+a{color:#1F6F6B}a:hover{color:#174F4C}
+button,input{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; padding: 12px 20px 32px; background: #F6F4EF; color: #1B1A17; font-family: 'IBM Plex Sans', system-ui, sans-serif; overflow: hidden">
+<div style="display: flex; align-items: center; justify-content: space-between; min-height: 44px">
+<a href="Connect.dc.html" aria-label="Back" style="width: 44px; height: 44px; display: flex; align-items: center; color: #1B1A17"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></a>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.08em; color: #5E5A52">STEP 3 OF 7 · ACCOUNT 1 OF 3</span>
+<span style="width: 44px"></span>
+</div>
+<div style="display: flex; gap: 4px"><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #1F6F6B"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #1F6F6B"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #1F6F6B"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #DDD8CC"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #DDD8CC"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #DDD8CC"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #DDD8CC"></span></div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<h1 style="margin: 0; font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; font-size: 32px; line-height: 1.05">Set up this Gmail</h1>
+<span style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: #3A372F"><span style="{{ dot }}"></span>you@company.com</span>
+</div>
+<div style="display: flex; gap: 12px; align-items: flex-end">
+<div style="display: flex; flex-direction: column; gap: 6px; flex-grow: 1">
+<label for="nick" style="font-size: 12px; font-weight: 600; color: #5E5A52">Nickname</label>
+<input id="nick" type="text" placeholder="Work" style="height: 44px; box-sizing: border-box; padding: 0 12px; border-radius: 10px; border: 1px solid #D8D3C7; background: #FFFFFF; font-size: 15px; color: #1B1A17">
+</div>
+<div style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 12px; font-weight: 600; color: #5E5A52">Color</span>
+<div style="display: flex; gap: 2px">
+<sc-for list="{{ swatches }}" as="c" hint-placeholder-count="4">
+<button onClick="{{ c.pick }}" aria-label="{{ c.label }}" aria-pressed="{{ c.pressed }}" style="width: 44px; height: 44px; border: 0; background: transparent; padding: 0; display: flex; align-items: center; justify-content: center; cursor: pointer"><span style="{{ c.style }}"></span></button>
+</sc-for>
+</div>
+</div>
+</div>
+<section style="display: flex; flex-direction: column; gap: 4px; padding: 8px 14px; background: #FFFFFF; border: 1px solid #E4E0D6; border-radius: 14px">
+<span style="font-size: 12px; font-weight: 600; color: #5E5A52; padding: 4px 0">What to read</span>
+<sc-for list="{{ reads }}" as="r" hint-placeholder-count="4">
+<label style="display: flex; align-items: center; gap: 12px; min-height: 40px; font-size: 15px; cursor: pointer"><input type="checkbox" checked="{{ r.on }}" onChange="{{ r.toggle }}" style="width: 20px; height: 20px; margin: 0; accent-color: #1F6F6B"><span>{{ r.label }} <span style="font-size: 12px; color: #5E5A52">{{ r.hint }}</span></span></label>
+</sc-for>
+</section>
+<section style="display: flex; flex-direction: column; gap: 6px">
+<span style="font-size: 12px; font-weight: 600; color: #5E5A52">How far back</span>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 12px; background: #ECE8DF">
+<sc-for list="{{ windows }}" as="w" hint-placeholder-count="3">
+<button onClick="{{ w.pick }}" aria-pressed="{{ w.pressed }}" style="{{ w.style }}">{{ w.label }}</button>
+</sc-for>
+</div>
+<span style="font-size: 12px; color: #5E5A52">Imports in the background. You can keep going.</span>
+</section>
+<label style="display: flex; align-items: center; gap: 12px; min-height: 44px; font-size: 14px; cursor: pointer"><input type="checkbox" style="width: 20px; height: 20px; margin: 0; accent-color: #1F6F6B">Use these settings for my other Google accounts</label>
+<div style="flex-grow: 1"></div>
+<a href="Presets.dc.html" style="display: flex; align-items: center; justify-content: center; min-height: 52px; border-radius: 14px; background: #1B1A17; color: #FFFFFF; font-size: 16px; font-weight: 600; text-decoration: none">Next account: Personal</a>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const color = st.color || '#1F6F6B';
+    const days = st.days || '30';
+    const segOn = 'min-height: 40px; border-radius: 9px; border: 0; background: #FFFFFF; color: #1B1A17; font-size: 13px; font-weight: 600; cursor: pointer';
+    const segOff = 'min-height: 40px; border-radius: 9px; border: 0; background: transparent; color: #4A463F; font-size: 13px; font-weight: 500; cursor: pointer';
+    const sw = [['#1F6F6B', 'Teal'], ['#3B5BA9', 'Blue'], ['#6B4FA0', 'Purple'], ['#8A5A2B', 'Brown']];
+    const offs = st.offs || { promo: true };
+    const R = [['inbox', 'Primary inbox', ''], ['sent', 'Sent mail', '· catches your promises'], ['clients', 'Label: Clients', ''], ['promo', 'Promotions and Social', '']];
+    return {
+      reads: R.map((r) => ({
+        label: r[1], hint: r[2], on: !offs[r[0]],
+        toggle: () => this.setState({ offs: Object.assign({}, offs, { [r[0]]: !offs[r[0]] }) })
+      })),
+      dot: 'width: 10px; height: 10px; border-radius: 50%; background: ' + color,
+      swatches: sw.map((c) => ({
+        label: c[1],
+        pressed: c[0] === color ? 'true' : 'false',
+        style: 'width: 26px; height: 26px; border-radius: 50%; background: ' + c[0] + '; box-shadow: ' + (c[0] === color ? '0 0 0 3px #F6F4EF, 0 0 0 5px ' + c[0] : 'none'),
+        pick: () => this.setState({ color: c[0] })
+      })),
+      windows: [['7', '7 days'], ['30', '30 days'], ['90', '90 days']].map((w) => ({
+        label: w[1],
+        pressed: w[0] === days ? 'true' : 'false',
+        style: w[0] === days ? segOn : segOff,
+        pick: () => this.setState({ days: w[0] })
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>

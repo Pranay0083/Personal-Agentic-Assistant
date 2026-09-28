@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Permission presets</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#E9E6DE}
+a{color:#1F6F6B}a:hover{color:#174F4C}
+button,input{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; padding: 12px 20px 32px; background: #F6F4EF; color: #1B1A17; font-family: 'IBM Plex Sans', system-ui, sans-serif; overflow: hidden">
+<div style="display: flex; align-items: center; justify-content: space-between; min-height: 44px">
+<a href="Scope.dc.html" aria-label="Back" style="width: 44px; height: 44px; display: flex; align-items: center; color: #1B1A17"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></a>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.08em; color: #5E5A52">STEP 4 OF 7</span>
+<span style="width: 44px"></span>
+</div>
+<div style="display: flex; gap: 4px"><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #1F6F6B"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #1F6F6B"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #1F6F6B"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #1F6F6B"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #DDD8CC"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #DDD8CC"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #DDD8CC"></span></div>
+<div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px">
+<h1 style="margin: 0; font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; font-size: 34px; line-height: 1.05">How much should agents do?</h1>
+<p style="margin: 0; font-size: 14px; line-height: 1.45; color: #5E5A52">Pick a starting point. You can fine-tune each agent and account later.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<sc-for list="{{ presets }}" as="p" hint-placeholder-count="3">
+<button onClick="{{ p.pick }}" aria-pressed="{{ p.pressed }}" style="{{ p.style }}">
+<span style="display: flex; justify-content: space-between; align-items: center; width: 100%"><span style="font-size: 17px; font-weight: 600">{{ p.title }}</span><span style="{{ p.tagStyle }}">{{ p.tag }}</span></span>
+<span style="font-size: 13px; line-height: 1.45; color: #3A372F">{{ p.body }}</span>
+</button>
+</sc-for>
+</div>
+<div style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: #FFFFFF; border: 1px solid #E4E0D6; border-radius: 14px">
+<span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1"><span style="font-size: 15px; font-weight: 500">Stricter for personal accounts</span><span style="font-size: 12px; color: #5E5A52">Personal Gmail stays read-only, hidden from coding agents</span></span>
+<button onClick="{{ toggle }}" aria-pressed="{{ strictPressed }}" aria-label="Stricter for personal accounts" style="{{ track }}"><span style="{{ knob }}"></span></button>
+</div>
+<div style="flex-grow: 1"></div>
+<a href="ModelsSetup.dc.html" style="display: flex; align-items: center; justify-content: center; min-height: 52px; border-radius: 14px; background: #1B1A17; color: #FFFFFF; font-size: 16px; font-weight: 600; text-decoration: none">Continue</a>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const pick = st.pick || 'balanced';
+    const strict = st.strict === undefined ? true : st.strict;
+    const base = 'display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 16px; border-radius: 16px; text-align: left; cursor: pointer; color: #1B1A17; ';
+    const P = [
+      ['cautious', 'Cautious', 'Read only. Agents suggest, you do everything.', ''],
+      ['balanced', 'Balanced', 'Tasks and drafts happen on their own. Anything that sends or changes a ticket asks you first.', 'Recommended'],
+      ['hands', 'Hands-off', 'Small actions like labeling and closing done tasks run automatically. Sending still asks.', '']
+    ];
+    return {
+      presets: P.map((p) => ({
+        title: p[1], body: p[2], tag: p[3],
+        tagStyle: p[3] ? 'font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 999px; background: #1F6F6B; color: #FFFFFF' : 'display: none',
+        pressed: p[0] === pick ? 'true' : 'false',
+        style: base + (p[0] === pick ? 'border: 2px solid #1F6F6B; background: #E3EFEC' : 'border: 2px solid #E4E0D6; background: #FFFFFF'),
+        pick: () => this.setState({ pick: p[0] })
+      })),
+      strictPressed: strict ? 'true' : 'false',
+      track: 'position: relative; width: 52px; height: 32px; flex-shrink: 0; border-radius: 16px; border: 0; padding: 0; cursor: pointer; background: ' + (strict ? '#1F6F6B' : '#CFCABE'),
+      knob: 'position: absolute; top: 3px; left: ' + (strict ? '23px' : '3px') + '; width: 26px; height: 26px; border-radius: 50%; background: #FFFFFF',
+      toggle: () => this.setState({ strict: !strict })
+    };
+  }
+}
+</script>
+</body>
+</html>

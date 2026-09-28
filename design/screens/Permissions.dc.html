@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Permissions</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#E9E6DE}
+a{color:#1F6F6B}a:hover{color:#174F4C}
+button,input{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; padding: 16px 20px 24px; background: #F6F4EF; color: #1B1A17; font-family: 'IBM Plex Sans', system-ui, sans-serif; overflow: hidden">
+<a href="Control.dc.html" style="align-self: flex-start; display: flex; align-items: center; gap: 4px; min-height: 44px; font-size: 15px; font-weight: 500; text-decoration: none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg>Control</a>
+<h1 style="margin: 0; font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; font-size: 36px; line-height: 1">Permissions</h1>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 12px; background: #ECE8DF; flex-shrink: 0">
+<sc-for list="{{ presets }}" as="p" hint-placeholder-count="3">
+<button onClick="{{ p.pick }}" aria-pressed="{{ p.pressed }}" style="{{ p.style }}">{{ p.label }}</button>
+</sc-for>
+</div>
+<div style="display: flex; gap: 8px; overflow-x: auto; flex-shrink: 0">
+<sc-for list="{{ whos }}" as="w" hint-placeholder-count="4">
+<button onClick="{{ w.pick }}" aria-pressed="{{ w.pressed }}" style="{{ w.style }}">{{ w.label }}</button>
+</sc-for>
+</div>
+<sc-if value="{{ grant }}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 14px; border-radius: 12px; background: #FBF4EA; border: 1px solid #E8CFB0">
+<span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1"><span style="font-size: 14px; font-weight: 600; color: #7A3E0B">Temporary: Gmail read</span><span style="font-size: 12px; color: #6B4A2A">Expires in 42 min</span></span>
+<button onClick="{{ revoke }}" style="min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid #D8B894; background: #FFFFFF; color: #7A3E0B; font-size: 13px; font-weight: 600; cursor: pointer">Revoke</button>
+</div>
+</sc-if>
+<section style="display: flex; flex-direction: column; gap: 6px">
+<h2 style="margin: 0; font-size: 12px; font-weight: 600; color: #5E5A52">What {{ whoLabel }} can see</h2>
+<div style="display: flex; flex-direction: column; background: #FFFFFF; border: 1px solid #E4E0D6; border-radius: 14px">
+<sc-for list="{{ dataRows }}" as="r" hint-placeholder-count="5">
+<div style="{{ r.rowStyle }}">
+<span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1"><span style="font-size: 15px; font-weight: 500">{{ r.name }}</span><span style="font-size: 12px; color: #5E5A52">{{ r.scope }}</span></span>
+<button onClick="{{ r.cycle }}" aria-label="{{ r.aria }}" style="min-height: 44px; padding: 0; border: 0; background: transparent; cursor: pointer; display: flex; align-items: center"><span style="padding: 5px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; {{ r.pillStyle }}">{{ r.level }}</span></button>
+</div>
+</sc-for>
+</div>
+</section>
+<section style="display: flex; flex-direction: column; gap: 6px">
+<h2 style="margin: 0; font-size: 12px; font-weight: 600; color: #5E5A52">What {{ whoLabel }} can do</h2>
+<div style="display: flex; flex-direction: column; background: #FFFFFF; border: 1px solid #E4E0D6; border-radius: 14px">
+<sc-for list="{{ actionRows }}" as="r" hint-placeholder-count="2">
+<div style="{{ r.rowStyle }}">
+<span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1"><span style="font-size: 15px; font-weight: 500">{{ r.name }}</span><span style="font-size: 12px; color: #5E5A52">{{ r.scope }}</span></span>
+<button onClick="{{ r.cycle }}" aria-label="{{ r.aria }}" style="min-height: 44px; padding: 0; border: 0; background: transparent; cursor: pointer; display: flex; align-items: center"><span style="padding: 5px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; {{ r.pillStyle }}">{{ r.level }}</span></button>
+</div>
+</sc-for>
+</div>
+</section>
+<p style="margin: 0; font-size: 12px; line-height: 1.45; color: #5E5A52">Tap a level to change it. Rules are enforced on your server, not in the app.</p>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const who = st.who || 'code';
+    const preset = st.preset || 'balanced';
+    const over = st.over || {};
+    const L = {
+      none: { label: 'No access', bg: '#ECE8DF', fg: '#4A463F' },
+      read: { label: 'Read', bg: '#E3EFEC', fg: '#174F4C' },
+      ask: { label: 'Ask me', bg: '#F7EBDD', fg: '#7A3E0B' },
+      auto: { label: 'Automatic', bg: '#1F6F6B', fg: '#FFFFFF' },
+      never: { label: 'Never', bg: '#ECE8DF', fg: '#4A463F' }
+    };
+    const dataCycle = ['none', 'read'];
+    const actCycle = ['never', 'ask', 'auto'];
+    const D = {
+      code: { label: 'Claude Code', data: [['Gmail', 'Only with a temporary grant', 'none'], ['Slack', '#eng and #api only', 'read'], ['Jira', 'Project PROJ', 'read'], ['GitHub', '3 repositories', 'read'], ['Notes', 'Projects folder', 'read']], acts: [['Update Jira tickets', 'Comment or change status', 'ask'], ['Send messages', 'Email, Slack, Teams', 'never']] },
+      claude: { label: 'Claude', data: [['Gmail', 'Summaries, not full bodies', 'read'], ['Slack', 'Channels, no DMs', 'read'], ['Jira', 'All projects', 'read'], ['Calendar', 'Titles and times', 'read'], ['Notes', 'All folders', 'read']], acts: [['Create tasks', 'Adds to your list', 'auto'], ['Send messages', 'Email, Slack, Teams', 'ask']] },
+      reply: { label: 'Reply agent', data: [['Gmail', 'Threads you are on', 'read'], ['Slack', 'Mentions and DMs', 'read'], ['Calendar', 'Free and busy', 'read'], ['Jira', 'Not needed', 'none'], ['Notes', 'Not needed', 'none']], acts: [['Write drafts', 'Lands in Approvals', 'auto'], ['Send replies', 'Email and Slack', 'ask']] },
+      triage: { label: 'Triage agent', data: [['Gmail', 'All new mail', 'read'], ['Slack', 'All joined channels', 'read'], ['Jira', 'All projects', 'read'], ['Teams', 'Chats and channels', 'read'], ['Notes', 'Titles only', 'read']], acts: [['Create tasks', 'From requests it finds', 'auto'], ['Label and archive', 'Email only', 'ask']] }
+    };
+    const cur = D[who];
+    const row = (kind, i, r, cycle) => {
+      const key = who + ':' + kind + ':' + i;
+      const lvl = over[key] || r[2];
+      const next = cycle[(cycle.indexOf(lvl) + 1) % cycle.length];
+      return {
+        name: r[0], scope: r[1], level: L[lvl].label,
+        aria: r[0] + ': ' + L[lvl].label + '. Tap to change.',
+        pillStyle: 'background: ' + L[lvl].bg + '; color: ' + L[lvl].fg,
+        rowStyle: 'display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 2px 10px 2px 14px' + (i ? '; border-top: 1px solid #EEEAE1' : ''),
+        cycle: () => this.setState({ over: Object.assign({}, over, { [key]: next }) })
+      };
+    };
+    const tabOn = 'min-height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid #1B1A17; background: #1B1A17; color: #FFFFFF; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer';
+    const tabOff = 'min-height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid #D8D3C7; background: #FFFFFF; color: #1B1A17; font-size: 13px; font-weight: 500; white-space: nowrap; cursor: pointer';
+    const segOn = 'min-height: 40px; border-radius: 9px; border: 0; background: #FFFFFF; color: #1B1A17; font-size: 13px; font-weight: 600; cursor: pointer';
+    const segOff = 'min-height: 40px; border-radius: 9px; border: 0; background: transparent; color: #4A463F; font-size: 13px; font-weight: 500; cursor: pointer';
+    return {
+      presets: [['cautious', 'Cautious'], ['balanced', 'Balanced'], ['hands', 'Hands-off']].map((p) => ({ label: p[1], pressed: p[0] === preset ? 'true' : 'false', style: p[0] === preset ? segOn : segOff, pick: () => this.setState({ preset: p[0] }) })),
+      whos: ['code', 'claude', 'reply', 'triage'].map((id) => ({ label: D[id].label, pressed: id === who ? 'true' : 'false', style: id === who ? tabOn : tabOff, pick: () => this.setState({ who: id }) })),
+      whoLabel: cur.label,
+      grant: who === 'code' && !st.revoked,
+      revoke: () => this.setState({ revoked: true }),
+      dataRows: cur.data.map((r, i) => row('d', i, r, dataCycle)),
+      actionRows: cur.acts.map((r, i) => row('a', i, r, actCycle))
+    };
+  }
+}
+</script>
+</body>
+</html>

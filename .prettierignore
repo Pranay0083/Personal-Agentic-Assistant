@@ -1,0 +1,9 @@
+node_modules
+pnpm-lock.yaml
+packages/db/drizzle
+design
+apps/mobile/.expo
+apps/mobile/ios
+apps/mobile/android
+dist
+coverage

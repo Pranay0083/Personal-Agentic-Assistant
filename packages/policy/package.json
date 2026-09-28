@@ -1,0 +1,17 @@
+{
+  "name": "@hub/policy",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@hub/db": "workspace:*",
+    "@hub/shared": "workspace:*",
+    "drizzle-orm": "^0.45.3"
+  }
+}

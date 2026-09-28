@@ -1,0 +1,21 @@
+{
+  "name": "@hub/models",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
+    "@hub/db": "workspace:*",
+    "@hub/server": "workspace:*",
+    "@hub/shared": "workspace:*",
+    "drizzle-orm": "^0.45.3",
+    "openai": "^7.23.0",
+    "zod": "^4.6.5"
+  }
+}

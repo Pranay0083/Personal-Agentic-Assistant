@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>First win</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@500&amp;display=swap">
+<style>
+body{margin:0;background:#E9E6DE}
+a{color:#1F6F6B}a:hover{color:#174F4C}
+button,input{font-family:inherit}
+</style>
+</helmet>
+<div style="width: 390px; height: 844px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; padding: 12px 20px 32px; background: #F6F4EF; color: #1B1A17; font-family: 'IBM Plex Sans', system-ui, sans-serif; overflow: hidden">
+<div style="display: flex; align-items: center; justify-content: space-between; min-height: 44px">
+<a href="Agents.dc.html" aria-label="Back" style="width: 44px; height: 44px; display: flex; align-items: center; color: #1B1A17"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg></a>
+<span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.08em; color: #5E5A52">STEP 7 OF 7</span>
+<span style="width: 44px"></span>
+</div>
+<div style="display: flex; gap: 4px"><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #1F6F6B"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #1F6F6B"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #1F6F6B"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #1F6F6B"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #1F6F6B"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #1F6F6B"></span><span style="flex-grow: 1; height: 4px; border-radius: 2px; background: #1F6F6B"></span></div>
+<div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px">
+<h1 style="margin: 0; font-family: 'Instrument Serif', Georgia, serif; font-weight: 400; font-size: 34px; line-height: 1.05">Here's what we found.</h1>
+<p style="margin: 0; font-size: 14px; line-height: 1.45; color: #5E5A52">From the last 30 days across 3 accounts. Confirm a few so the agents learn what counts.</p>
+</div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<sc-for list="{{ items }}" as="t" hint-placeholder-count="3">
+<article style="display: flex; flex-direction: column; gap: 8px; padding: 14px; background: #FFFFFF; border: 1px solid #E4E0D6; border-radius: 14px">
+<span style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #5E5A52"><span style="{{ t.dot }}"></span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.06em; padding: 3px 6px; border-radius: 4px; background: #ECE8DF; color: #4A463F">{{ t.src }}</span>{{ t.meta }}</span>
+<span style="font-size: 15px; font-weight: 500">{{ t.title }}</span>
+<sc-if value="{{ t.open }}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; gap: 8px">
+<button onClick="{{ t.yes }}" style="flex-grow: 1; min-height: 44px; border-radius: 10px; border: 0; background: #1F6F6B; color: #FFFFFF; font-size: 14px; font-weight: 600; cursor: pointer">Yes, a task</button>
+<button onClick="{{ t.no }}" style="flex-grow: 1; min-height: 44px; border-radius: 10px; border: 1px solid #D8D3C7; background: #FFFFFF; color: #1B1A17; font-size: 14px; cursor: pointer">Not a task</button>
+</div>
+</sc-if>
+<sc-if value="{{ t.done }}" hint-placeholder-val="{{ false }}">
+<span style="min-height: 44px; display: flex; align-items: center; font-size: 13px; font-weight: 600; color: #174F4C">{{ t.status }}</span>
+</sc-if>
+</article>
+</sc-for>
+</div>
+<div style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: #E3EFEC; border-radius: 14px">
+<span style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1"><span style="font-size: 15px; font-weight: 600">Get nudged when it matters</span><span style="font-size: 12px; color: #3A5A56">Approvals and VIPs only. Quiet 22:00–07:00.</span></span>
+<button onClick="{{ allow }}" style="{{ allowStyle }}">{{ allowLabel }}</button>
+</div>
+<div style="flex-grow: 1"></div>
+<a href="Main.dc.html" style="display: flex; align-items: center; justify-content: center; min-height: 52px; border-radius: 14px; background: #1B1A17; color: #FFFFFF; font-size: 16px; font-weight: 600; text-decoration: none">Go to Today</a>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.state || {};
+    const ans = st.ans || {};
+    const T = [
+      ['a', 'GMAIL', 'Work · Meera Iyer', 'Send Q3 deck outline to Meera', '#1F6F6B'],
+      ['b', 'SLACK', 'Company · #api', 'Reply to Priya about the API spec', '#1F6F6B'],
+      ['c', 'GMAIL', 'Personal · clinic', 'Book dentist follow-up', '#3B5BA9']
+    ];
+    const on = !!st.allowed;
+    return {
+      items: T.map((t) => ({
+        src: t[1], meta: t[2], title: t[3],
+        dot: 'width: 9px; height: 9px; border-radius: 50%; background: ' + t[4],
+        open: !ans[t[0]], done: !!ans[t[0]],
+        status: ans[t[0]] === 'yes' ? 'Added to Tasks' : 'Got it. Similar messages will be skipped.',
+        yes: () => this.setState({ ans: Object.assign({}, ans, { [t[0]]: 'yes' }) }),
+        no: () => this.setState({ ans: Object.assign({}, ans, { [t[0]]: 'no' }) })
+      })),
+      allowLabel: on ? 'On' : 'Allow',
+      allowStyle: on
+        ? 'min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid #1F6F6B; background: transparent; color: #174F4C; font-size: 14px; font-weight: 600; cursor: pointer'
+        : 'min-height: 44px; padding: 0 16px; border-radius: 10px; border: 0; background: #1F6F6B; color: #FFFFFF; font-size: 14px; font-weight: 600; cursor: pointer',
+      allow: () => this.setState({ allowed: true })
+    };
+  }
+}
+</script>
+</body>
+</html>
