@@ -189,11 +189,20 @@ describe('gmail connector with recorded fixtures', () => {
       labelIds: ['INBOX', 'SENT'],
       labelFilterBehavior: 'include',
     });
+    // The topic is shared by every account, so it is not a subscription id.
     expect(sub).toEqual({
-      externalSubId: 'projects/hub-dev/topics/gmail',
+      externalSubId: null,
       expiresAt: new Date(1791191561000),
       cursor: '1000',
     });
+    // Renew re-watches the same way and keeps only the expiry.
+    const renewed = await c.renew({
+      ...ctxFor(WORK, tokens()).ctx,
+      // A row stored by an older version still holds the topic; it is not used.
+      subscription: { externalSubId: 'projects/hub-dev/topics/gmail', expiresAt: null, meta: {} },
+    });
+    expect(renewed).toMatchObject({ externalSubId: null, expiresAt: new Date(1791191561000) });
+    expect(watch).toHaveBeenCalledTimes(2);
   });
 
   it('execute sends RFC 2822 with the deterministic Message-ID and threadId', async () => {

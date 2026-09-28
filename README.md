@@ -43,14 +43,27 @@ pnpm --filter @hub/gateway fake:email --to alex@company.example --from "Meera Iy
 Connect Claude Code with `claude mcp add --transport http hub http://localhost:4002/mcp`;
 approve it on the phone with the code shown in the browser.
 
+## Connectors
+
+Google (Gmail, Calendar, Drive, Chat), Microsoft 365 (Outlook, Calendar, Teams, OneDrive),
+Slack (per workspace), Atlassian (Jira, Confluence per site), Notion and GitHub. In demo
+mode (`CONNECTORS_FAKE=1`) every provider serves recorded fixtures; `pnpm
+acceptance:connectors` runs them all end to end, and `pnpm --filter @hub/connectors
+fake:<provider>` delivers a change as a signed webhook.
+
 ## Real mode
 
-| What                                                         | Env                                                      | Phase |
-| ------------------------------------------------------------ | -------------------------------------------------------- | ----- |
-| Google OAuth client + Pub/Sub topic and push subscription    | `GOOGLE_*`, `GMAIL_PUBSUB_*`                             | 1     |
-| Public URL for webhooks (tunnel in dev)                      | `PUBLIC_GATEWAY_URL`                                     | 1     |
-| Anthropic API key                                            | `ANTHROPIC_API_KEY`                                      | 2     |
-| Expo project for push                                        | `EXPO_ACCESS_TOKEN`                                      | 2     |
-| AWS KMS keys for secrets at rest (read and write-token keys) | `SECRETS_PROVIDER=kms`, `KMS_KEY_ID`, `WRITE_KMS_KEY_ID` | prod  |
+| What                                                          | Env                                                      | Setup                    |
+| ------------------------------------------------------------- | -------------------------------------------------------- | ------------------------ |
+| Google OAuth client, Pub/Sub topics (Gmail, Workspace Events) | `GOOGLE_*`, `GMAIL_PUBSUB_*`, `GOOGLE_EVENTS_PUBSUB_*`   | `docs/CONNECTORS.md`     |
+| Microsoft Entra app (+ optional write app)                    | `MS_*`                                                   | `docs/CONNECTORS.md`     |
+| Slack app (+ optional write app)                              | `SLACK_*`                                                | `docs/CONNECTORS.md`     |
+| Atlassian OAuth 2.0 (3LO) app                                 | `ATLASSIAN_*`                                            | `docs/CONNECTORS.md`     |
+| Notion public integration                                     | `NOTION_*`                                               | `docs/CONNECTORS.md`     |
+| GitHub App                                                    | `GITHUB_*`                                               | `docs/CONNECTORS.md`     |
+| Public URL for webhooks (tunnel in dev)                       | `PUBLIC_GATEWAY_URL`                                     | `apps/gateway/README.md` |
+| Anthropic API key (or Bedrock / Vertex per user)              | `ANTHROPIC_API_KEY`                                      |                          |
+| Expo project for push                                         | `EXPO_ACCESS_TOKEN`                                      |                          |
+| AWS KMS keys for secrets at rest (read and write-token keys)  | `SECRETS_PROVIDER=kms`, `KMS_KEY_ID`, `WRITE_KMS_KEY_ID` | `.env.example`           |
 
-See `.env.example` for every variable and `apps/gateway/README.md` for the tunnel setup.
+See `.env.example` for every variable.

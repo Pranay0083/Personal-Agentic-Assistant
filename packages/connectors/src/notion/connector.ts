@@ -60,7 +60,7 @@ export type NotionConnectorOptions = {
   maxScan?: number;
   backfillPageSize?: number;
   now?: () => number;
-  onVerificationToken?: (token: string) => string | void;
+  onVerificationToken?: (token: string) => string | null | void;
   log?: NotionWebhookLog;
 };
 
@@ -238,8 +238,10 @@ export function createNotionConnector(opts: NotionConnectorOptions = {}): Connec
     renew: subscribe,
 
     async verifyWebhook(req) {
+      const c = cfg();
       return verifyNotionWebhook(req, {
-        key: notionWebhookKey(cfg()),
+        key: notionWebhookKey(c),
+        configuredToken: c.webhookVerificationToken,
         ...(opts.onVerificationToken ? { onVerificationToken: opts.onVerificationToken } : {}),
         ...(opts.log ? { log: opts.log } : {}),
       });

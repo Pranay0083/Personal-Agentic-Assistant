@@ -108,7 +108,9 @@ export function bedrockClientOptions(
     if (!(opts.allowAmbientCredentials ?? !opts.production)) {
       throw new ModelConfigError('bedrock: add AWS access keys as the provider secret');
     }
-    return base;
+    // Ambient credentials are the server's own (AWS chain, AWS_BEARER_TOKEN_BEDROCK): they
+    // may only ever go to AWS itself, never to a base URL the user chose.
+    return { ...base, baseURL: `https://bedrock-mantle.${region}.api.aws/anthropic` };
   }
   const creds = parseBedrockSecret(opts.secret);
   if ('apiKey' in creds) return { ...base, apiKey: creds.apiKey };

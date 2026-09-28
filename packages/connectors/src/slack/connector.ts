@@ -35,6 +35,7 @@ import {
   SLACK_READ_SCOPES,
   SLACK_WRITE_SCOPES,
   slackConfigFromEnv,
+  writeConfigured,
   type SlackConfig,
 } from './config';
 import {
@@ -170,7 +171,8 @@ export function createSlackConnector(opts: SlackConnectorOptions = {}): Connecto
   async function refresh(c: SlackConfig, api: SlackHttp, t: OAuthTokens): Promise<OAuthTokens> {
     if (!t.refreshToken)
       throw new ReconnectRequiredError('slack', 'token expired, no refresh token');
-    const { clientId, clientSecret } = clientFor(c, accessOfTokens(c, t.scope));
+    const access = accessOfTokens(t.scope);
+    const { clientId, clientSecret } = clientFor(c, access);
     const r = await api.call<OAuthV2Response>('oauth.v2.access', {
       form: {
         client_id: clientId,
@@ -180,10 +182,16 @@ export function createSlackConnector(opts: SlackConnectorOptions = {}): Connecto
       },
     });
     const next = tokensFrom(r, now());
+    const scope = next.scope ?? t.scope;
+    // A read token must never carry write scopes (e.g. a write consent given to the read
+    // app). Refuse it before it is saved; the user reconnects with the read consent.
+    if (access === 'read' && (scope ?? '').split(/[\s,]+/).some(isWriteScope)) {
+      throw new ReconnectRequiredError('slack', 'refreshed read token carries write scopes');
+    }
     return {
       ...next,
       refreshToken: next.refreshToken ?? t.refreshToken,
-      ...(next.scope || t.scope ? { scope: next.scope ?? t.scope } : {}),
+      ...(scope ? { scope } : {}),
     };
   }
 
@@ -365,9 +373,19 @@ export function createSlackConnector(opts: SlackConnectorOptions = {}): Connecto
       return c.fake || (!!c.clientId && !!c.clientSecret && !!c.signingSecret);
     },
 
+    writeConfigured() {
+      return writeConfigured(cfg());
+    },
+
     connect: {
       authUrl({ state, redirectUri, access, loginHint }) {
         const c = cfg();
+        if (access === 'write' && !writeConfigured(c)) {
+          throw new ConnectorError(
+            'slack',
+            'write consent needs a separate Slack app (SLACK_WRITE_CLIENT_ID/SECRET)',
+          );
+        }
         if (c.fake) {
           return fakeSlackAuthUrl(store(), {
             state,

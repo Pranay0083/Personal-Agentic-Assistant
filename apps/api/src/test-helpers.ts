@@ -137,6 +137,9 @@ export const ATLASSIAN_INFO: ConnectorInfo = {
  * one consent for sites `a` and `b` (identities `cloud-a`, `cloud-b`), by default with the
  * Jira and Confluence read scopes.
  */
+/** Shared switch for the sites fake's `writeConfigured()`. */
+export const sitesWrite = { configured: true };
+
 export function fakeSitesConnector(
   provider: Provider = 'atlassian',
   opts: { configured?: boolean; info?: Partial<ConnectorInfo> } = {},
@@ -146,6 +149,8 @@ export function fakeSitesConnector(
     provider,
     info: { ...ATLASSIAN_INFO, ...opts.info },
     configured: () => opts.configured ?? true,
+    // Tests flip this to simulate a provider without a separate write app.
+    writeConfigured: () => sitesWrite.configured,
     connect: {
       authUrl: ({ state, redirectUri, access, loginHint }) => {
         const u = new URL(`https://${provider}.fake/authorize`);
@@ -162,7 +167,7 @@ export function fakeSitesConnector(
           externalId: `cloud-${site}`,
           displayName: site === 'nameless' ? null : `${site[0]!.toUpperCase()}${site.slice(1)}`,
           routeKeys: [`cloud-${site}`],
-          meta: { siteUrl: `https://${site}.atlassian.example` },
+          meta: { siteUrl: `https://${site}.atlassian.example`, atlassianAccountId: `aid-${user}` },
         }));
         return {
           tokens: {

@@ -112,6 +112,34 @@ export function workQueries(since: string): WorkQuery[] {
 
 const WRITE_LEVELS = new Set(['write', 'admin']);
 
+/**
+ * Route keys and meta derived from the user's installations of the app. Refuses an app
+ * with any write permission (Hub needs a read-only app).
+ */
+export function installationIdentity(installations: GithubInstallation[], c: GithubConfig) {
+  const granted = new Set<string>();
+  for (const inst of installations) {
+    for (const [perm, level] of Object.entries(inst.permissions ?? {})) {
+      if (WRITE_LEVELS.has(level)) {
+        throw new ConnectorError(
+          'github',
+          `the GitHub App has ${level} access to ${perm}; Hub needs a read-only app`,
+        );
+      }
+      granted.add(`${perm}:${level}`);
+    }
+  }
+  return {
+    routeKeys: installations.map((i) => String(i.id)),
+    meta: {
+      installations: installations.map((i) => ({ id: i.id, account: i.account?.login ?? null })),
+      grantedScopes: [...granted].sort(),
+      needsInstall: installations.length === 0,
+      installUrl: githubInstallUrl(c),
+    },
+  };
+}
+
 export function createGithubConnector(opts: GithubConnectorOptions = {}): Connector<GithubRecord> {
   const cfg = (): GithubConfig =>
     typeof opts.config === 'function' ? opts.config() : (opts.config ?? githubConfigFromEnv());
@@ -226,29 +254,9 @@ export function createGithubConnector(opts: GithubConnectorOptions = {}): Connec
         const client = clientWith(tokens.accessToken);
         const user = await client.user();
         const installations: GithubInstallation[] = await client.installations();
-        const granted = new Set<string>();
-        for (const inst of installations) {
-          for (const [perm, level] of Object.entries(inst.permissions ?? {})) {
-            if (WRITE_LEVELS.has(level)) {
-              throw new ConnectorError(
-                'github',
-                `the GitHub App has ${level} access to ${perm}; Hub needs a read-only app`,
-              );
-            }
-            granted.add(`${perm}:${level}`);
-          }
-        }
         const externalId = String(user.id);
-        const meta = {
-          login: user.login,
-          installations: installations.map((i) => ({
-            id: i.id,
-            account: i.account?.login ?? null,
-          })),
-          grantedScopes: [...granted].sort(),
-          needsInstall: installations.length === 0,
-          installUrl: githubInstallUrl(c),
-        };
+        const { routeKeys, meta: installMeta } = installationIdentity(installations, c);
+        const meta = { login: user.login, ...installMeta };
         return {
           tokens,
           externalId,
@@ -257,7 +265,7 @@ export function createGithubConnector(opts: GithubConnectorOptions = {}): Connec
             {
               externalId,
               displayName: user.login,
-              routeKeys: installations.map((i) => String(i.id)),
+              routeKeys,
               meta,
             },
           ],
@@ -284,6 +292,16 @@ export function createGithubConnector(opts: GithubConnectorOptions = {}): Connec
 
     subscribe,
     renew: subscribe,
+
+    /**
+     * Installations change after connect (installed, removed, repos picked): re-reads
+     * `/user/installations` for the route keys and the install meta. Sync calls it for
+     * events with `refreshRouteKeys: true` (installation webhooks).
+     */
+    async refreshIdentity(ctx) {
+      const client = await clientFor(ctx);
+      return installationIdentity(await client.installations(), cfg());
+    },
 
     async verifyWebhook(req) {
       return verifyGithubWebhook(req, githubWebhookSecret(cfg()));

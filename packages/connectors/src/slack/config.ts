@@ -1,3 +1,4 @@
+import { ConnectorError } from '../errors';
 import { fakeMode } from '../lib/fake';
 
 /**
@@ -38,7 +39,7 @@ export type SlackConfig = {
    * Optional second Slack app used only for the write consent. Slack user tokens are
    * cumulative per app (a later chat:write consent upgrades the same token), so a
    * separate app is the only way to keep the read token free of write scopes.
-   * Falls back to the main app.
+   * Without it the write consent is not offered (see writeConfigured), except in fake mode.
    */
   writeClientId?: string;
   writeClientSecret?: string;
@@ -62,18 +63,36 @@ export function slackConfigFromEnv(e: NodeJS.ProcessEnv = process.env): SlackCon
   };
 }
 
-/** Which consent a token came from: a write-app token carries chat:write and no history scope. */
-export function accessOfTokens(c: SlackConfig, scope: string | undefined): 'read' | 'write' {
+/**
+ * Which consent a token came from: a write-app token carries chat:write and no history
+ * scope. A token with both is a read token that gained write scopes (one app, two consents).
+ */
+export function accessOfTokens(scope: string | undefined): 'read' | 'write' {
   const granted = (scope ?? '').split(/[\s,]+/);
-  return c.writeClientId && granted.includes('chat:write') && !granted.includes('channels:history')
-    ? 'write'
-    : 'read';
+  return granted.includes('chat:write') && !granted.includes('channels:history') ? 'write' : 'read';
 }
 
-/** Client credentials for a consent kind (the write app when configured). */
+/**
+ * True when the write consent can be offered: a separate write app is configured, or fake
+ * mode. Slack user tokens accumulate every scope granted to one app, so a write consent on
+ * the read app would silently give the read token chat:write.
+ */
+export function writeConfigured(c: SlackConfig): boolean {
+  return c.fake || (!!c.writeClientId && !!c.writeClientSecret);
+}
+
+/** Client credentials for a consent kind. Write needs the separate write app (or fake mode). */
 export function clientFor(c: SlackConfig, access: 'read' | 'write') {
-  if (access === 'write' && c.writeClientId && c.writeClientSecret) {
-    return { clientId: c.writeClientId, clientSecret: c.writeClientSecret };
+  if (access === 'write') {
+    if (c.writeClientId && c.writeClientSecret) {
+      return { clientId: c.writeClientId, clientSecret: c.writeClientSecret };
+    }
+    if (!c.fake) {
+      throw new ConnectorError(
+        'slack',
+        'write consent needs a separate Slack app (SLACK_WRITE_CLIENT_ID/SECRET)',
+      );
+    }
   }
   return { clientId: c.clientId ?? '', clientSecret: c.clientSecret ?? '' };
 }

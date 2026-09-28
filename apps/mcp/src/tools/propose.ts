@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
-import { accounts, items, proposals } from '@hub/db';
+import { accounts, items, proposals, type Db } from '@hub/db';
 import {
   PROPOSAL_PAYLOADS,
   ProposalAction,
@@ -101,7 +101,38 @@ const short = (s: string, n: number) => {
   return one.length > n ? `${one.slice(0, n - 1)}…` : one;
 };
 
-function titleFor(action: ProposalAction, payload: Record<string, unknown>): string {
+/**
+ * The channel's name from items this account already synced (`slack:channel_name:` next to
+ * `slack:channel:<id>`), so the approval says "#api" rather than a raw id. Null = Hub has
+ * never seen that conversation, which the approval title says.
+ */
+async function slackChannelName(
+  db: Db,
+  accountId: string,
+  channel: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ labels: items.labels })
+    .from(items)
+    .where(
+      and(
+        eq(items.accountId, accountId),
+        sql`${items.labels} @> ${JSON.stringify([`slack:channel:${channel}`])}::jsonb`,
+      ),
+    )
+    .limit(1);
+  const labels = Array.isArray(row?.labels) ? (row.labels as unknown[]) : [];
+  const name = labels.find(
+    (l): l is string => typeof l === 'string' && l.startsWith('slack:channel_name:'),
+  );
+  return name ? name.slice('slack:channel_name:'.length) : null;
+}
+
+function titleFor(
+  action: ProposalAction,
+  payload: Record<string, unknown>,
+  slackName?: string | null,
+): string {
   switch (action) {
     case 'gmail.send':
     case 'outlook.send': {
@@ -110,10 +141,13 @@ function titleFor(action: ProposalAction, payload: Record<string, unknown>): str
     }
     case 'slack.post': {
       const p = payload as SlackPostPayload;
-      return `Post in Slack ${p.channel}${p.threadTs ? ' (thread)' : ''}: ${short(p.text, 80)}`.slice(
-        0,
-        140,
-      );
+      const where =
+        slackName === undefined
+          ? `Slack ${p.channel}`
+          : slackName
+            ? `#${slackName}`
+            : 'a Slack conversation not seen in Hub';
+      return `Post in ${where}${p.threadTs ? ' (thread)' : ''}: ${short(p.text, 80)}`.slice(0, 140);
     }
     case 'jira.transition': {
       const p = payload as JiraTransitionPayload;
@@ -205,7 +239,13 @@ export async function proposeAction(env: ToolEnv, args: ProposeArgs): Promise<Ca
       accountId: args.accountId,
       agent: env.key,
       action: args.action,
-      title: titleFor(args.action, payload),
+      title: titleFor(
+        args.action,
+        payload,
+        args.action === 'slack.post'
+          ? await slackChannelName(db, args.accountId, (payload as SlackPostPayload).channel)
+          : undefined,
+      ),
       payload,
       status: 'pending',
       sourceItemId: args.sourceItemId ?? null,

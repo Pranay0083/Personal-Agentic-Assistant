@@ -1,7 +1,14 @@
 import { ConnectorError, ReconnectRequiredError } from '../errors';
 import { createHttp, toTokens, type FetchFn, type TokenResponse } from '../lib/index';
 import type { AccessKind, ConnectorContext, OAuthTokens } from '../types';
-import { clientFor, scopesFor, tokenUrl, type MicrosoftConfig } from './config';
+import {
+  clientFor,
+  normalizeScopes,
+  scopesFor,
+  tokenUrl,
+  writeScopesIn,
+  type MicrosoftConfig,
+} from './config';
 
 export const PROVIDER = 'microsoft';
 
@@ -35,7 +42,8 @@ export function graphFetch(inner: FetchFn): FetchFn {
 /**
  * A valid access token for ctx, refreshing through the v2 token endpoint (with the scopes of
  * the consent kind, as Microsoft wants) when it expires within a minute. Saves rotated tokens
- * through ctx.saveTokens. 400/401 at the token endpoint means the grant is gone.
+ * through ctx.saveTokens. 400/401 at the token endpoint means the grant is gone. A refreshed
+ * read token that carries a write scope is refused with ReconnectRequiredError.
  */
 export async function msAccessToken(
   cfg: MicrosoftConfig,
@@ -63,6 +71,11 @@ export async function msAccessToken(
     throw new ReconnectRequiredError(PROVIDER, 'token endpoint refused the grant');
   }
   const fresh = toTokens(res, now);
+  // A read token must never carry write scopes (e.g. Mail.Send consented to the read app,
+  // which Microsoft then adds to every token of that app). Refuse it before it is saved.
+  if (access === 'read' && writeScopesIn(normalizeScopes(fresh.scope)).length) {
+    throw new ReconnectRequiredError(PROVIDER, 'refreshed read token carries write scopes');
+  }
   const next: OAuthTokens = {
     ...fresh,
     refreshToken: fresh.refreshToken ?? t.refreshToken,

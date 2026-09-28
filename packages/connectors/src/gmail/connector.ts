@@ -213,8 +213,11 @@ export function createGmailConnector(opts: GmailConnectorOptions = {}): Connecto
         labelIds: watchLabelIds(ctx.filters),
         labelFilterBehavior: 'include',
       });
+      // No externalSubId: the Pub/Sub topic is shared by every Gmail account, so it cannot
+      // identify one subscription. Mail pushes route by email address (externalAccountId);
+      // the watch expiry drives renewal.
       return {
-        externalSubId: topicName,
+        externalSubId: null,
         expiresAt: res.expiration ? new Date(Number(res.expiration)) : null,
         cursor: res.historyId ?? null,
       };

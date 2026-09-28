@@ -1,7 +1,12 @@
 import { ConnectorError } from '../errors';
 import type { FetchFn } from '../lib/index';
 import type { Connector, ConnectorContext, ConnectorInfo } from '../types';
-import { MS_CHANNEL_SCOPES, msConfigFromEnv, type MicrosoftConfig } from './config';
+import {
+  MS_CHANNEL_SCOPES,
+  msConfigFromEnv,
+  writeConfigured,
+  type MicrosoftConfig,
+} from './config';
 import { fakeGraphFetch, fakeMsAuthUrl } from './fake';
 import { defaultFakeMsStore, type FakeMicrosoftStore } from './fake-store';
 import { graphFor, PROVIDER } from './graph';
@@ -113,10 +118,15 @@ export function createMicrosoftConnector(
       const c = cfg();
       return c.fake || (!!c.clientId && !!c.clientSecret);
     },
+    writeConfigured() {
+      return writeConfigured(cfg());
+    },
 
     connect: {
       authUrl(o) {
         const c = cfg();
+        // msAuthUrl refuses the write consent without a separate write app; fake mode
+        // always offers it (writeConfigured).
         return c.fake ? fakeMsAuthUrl(store(), o) : msAuthUrl(c, o);
       },
       exchange: (o) => msExchange(cfg(), o),

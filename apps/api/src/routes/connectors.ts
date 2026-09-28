@@ -60,7 +60,8 @@ export function catalogEntry(provider: Provider, c: Connector | undefined): Conn
       choices: o.choices ?? [],
       default: o.default,
     })),
-    writeActions: [...info.writeActions],
+    // Hidden when the hub can't offer the separate write consent safely (no write app).
+    writeActions: c.writeConfigured && !c.writeConfigured() ? [] : [...info.writeActions],
   };
 }
 

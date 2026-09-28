@@ -117,6 +117,23 @@ describe('BedrockProvider', () => {
     ).toMatchObject({ apiKey: 'bedrock-api-key' });
   });
 
+  it('sends ambient (server) credentials only to the AWS endpoint, never a user base URL', () => {
+    const o = bedrockClientOptions({
+      region: 'us-east-1',
+      production: false,
+      baseURL: 'https://attacker.example/anthropic',
+    });
+    expect(o.baseURL).toBe('https://bedrock-mantle.us-east-1.api.aws/anthropic');
+    // With explicit user credentials, the user's own base URL is still honoured.
+    const own = bedrockClientOptions({
+      region: 'us-east-1',
+      production: false,
+      baseURL: 'https://gateway.example/anthropic',
+      secret: JSON.stringify({ accessKeyId: 'AKIAFAKE', secretAccessKey: 'x' }),
+    });
+    expect(own.baseURL).toBe('https://gateway.example/anthropic');
+  });
+
   it('uses the default AWS chain only when ambient credentials are allowed', () => {
     expect(() => bedrockClientOptions({ region: 'us-east-1', production: true })).toThrow(
       /add AWS access keys/,

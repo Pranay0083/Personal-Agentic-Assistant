@@ -35,6 +35,11 @@ export type ConnectorContext = {
    * have rotated the refresh token first; the oauth2 helper retries with the stored one.
    */
   reloadTokens?: () => Promise<OAuthTokens>;
+  /**
+   * Runs a token refresh while holding a lock on the shared grant, so sibling accounts
+   * don't refresh a rotating refresh token at the same moment.
+   */
+  withRefreshLock?: <T>(fn: () => Promise<T>) => Promise<T>;
   /** Source this call is for (defaults to the connector's first source). */
   source?: string;
   /** Delta cursor of `source` (subscriptions.cursor). */
@@ -211,6 +216,13 @@ export interface Connector<Raw = unknown> {
   info: ConnectorInfo;
   /** True when this server has the client credentials (or fake mode is on). */
   configured(): boolean;
+  /**
+   * True when the separate write consent can be offered safely. Providers that put every
+   * scope a user granted to one app into its tokens (Slack, Microsoft) need a second,
+   * write-only app; without it, "Allow sending" would give read tokens write scopes.
+   * Missing means "yes" (Google and Atlassian scope tokens per consent).
+   */
+  writeConfigured?(): boolean;
   connect: {
     authUrl(opts: {
       state: string;

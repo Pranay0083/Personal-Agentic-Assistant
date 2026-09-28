@@ -13,9 +13,9 @@ http://localhost:4001` for the gateway); see `apps/gateway/README.md`.
 - **Read consent** asks for read scopes only; a grant that includes a write scope is
   rejected. **"Allow sending" / "Allow ticket updates"** is a separate consent whose token
   only the executor can decrypt.
-- Where a provider accumulates scopes per app (Microsoft, Slack), register a **second app
-  for the write consent** (`MS_WRITE_*`, `SLACK_WRITE_*`); otherwise a later read reconnect
-  carries the write scope and is refused.
+- Where a provider accumulates scopes per app (Microsoft, Slack), sending needs a **second
+  app for the write consent** (`MS_WRITE_*`, `SLACK_WRITE_*`). Without it the hub hides
+  "Allow sending" for that provider, so read tokens never carry write scopes.
 - Webhook shared secrets are stored only as hashes; signatures are checked in constant time.
 
 | Provider         | Sources (item kind)                                                                | How changes arrive                                                                | Writes                            |
@@ -62,8 +62,9 @@ stay off. Chat is marked unavailable on consumer (gmail.com) accounts.
    `Calendars.Read`, `Chat.Read`, `Files.Read`. For Teams channels (optional,
    `MS_CHANNEL_MESSAGES=1`): `Team.ReadBasic.All`, `Channel.ReadBasic.All`,
    `ChannelMessage.Read.All` (admin consent).
-4. Recommended: a second app with only `Mail.Send`, `User.Read`, `openid`,
-   `offline_access` → `MS_WRITE_CLIENT_ID` / `MS_WRITE_CLIENT_SECRET`.
+4. For "Allow sending": a second app with only `Mail.Send`, `User.Read`, `openid`,
+   `offline_access` → `MS_WRITE_CLIENT_ID` / `MS_WRITE_CLIENT_SECRET`. Without it the hub
+   doesn't offer sending for Microsoft (a single app would put Mail.Send in read tokens).
 5. The gateway URL must be https (Graph refuses http notification URLs).
 
 Notes: Graph has no per-app token revocation for delegated grants (users remove the app at
@@ -81,8 +82,8 @@ subscription as a trigger, falling back to polling.
 3. Event Subscriptions: request URL `<PUBLIC_GATEWAY_URL>/hooks/slack`; subscribe on behalf
    of users to `message.channels`, `message.groups`, `message.im`, `message.mpim`.
 4. Basic Information → `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_SIGNING_SECRET`.
-5. Recommended: a second app with only `chat:write` → `SLACK_WRITE_CLIENT_ID` /
-   `SLACK_WRITE_CLIENT_SECRET`.
+5. For "Allow sending": a second app with only `chat:write` → `SLACK_WRITE_CLIENT_ID` /
+   `SLACK_WRITE_CLIENT_SECRET`. Without it the hub doesn't offer sending for Slack.
 
 To verify on a live workspace: that `search.messages` with only `after:<date>` returns
 results, and that message metadata round-trips with user tokens.

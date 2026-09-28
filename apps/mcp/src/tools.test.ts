@@ -438,6 +438,35 @@ describe('propose_action', () => {
       });
     });
 
+    it('slack.post names the channel when Hub has seen it', async () => {
+      await t.db.insert(items).values({
+        accountId: slack,
+        kind: 'chat',
+        externalId: 'slack-seen-1',
+        title: 'hello',
+        labels: ['slack:channel:C0API00001', 'slack:channel_name:api'],
+        receivedAt: new Date(),
+      });
+      const r = await call('propose_action', {
+        accountId: slack,
+        action: 'slack.post',
+        payload: { channel: 'C0API00001', text: 'On it.' },
+        reason: 'Reply',
+      });
+      expect(r.isError).toBe(false);
+      expect(await latest(slack)).toMatchObject({ title: 'Post in #api: On it.' });
+    });
+
+    it('slack.post rejects malformed channel and thread ids', async () => {
+      const r = await call('propose_action', {
+        accountId: slack,
+        action: 'slack.post',
+        payload: { channel: '#general', text: 'hi', threadTs: 'yesterday' },
+        reason: 'x',
+      });
+      expect(r.isError).toBe(true);
+    });
+
     it('slack.post on a Slack account', async () => {
       const r = await call('propose_action', {
         accountId: slack,
@@ -445,18 +474,18 @@ describe('propose_action', () => {
         payload: {
           channel: 'C024BE91L',
           text: 'The spec is in the wiki.',
-          threadTs: '1727500000.0001',
+          threadTs: '1727500000.000100',
         },
         reason: 'Answer in thread',
       });
       expect(r.isError).toBe(false);
       expect(await latest(slack)).toMatchObject({
         action: 'slack.post',
-        title: 'Post in Slack C024BE91L (thread): The spec is in the wiki.',
+        title: 'Post in a Slack conversation not seen in Hub (thread): The spec is in the wiki.',
         payload: {
           channel: 'C024BE91L',
           text: 'The spec is in the wiki.',
-          threadTs: '1727500000.0001',
+          threadTs: '1727500000.000100',
         },
       });
     });

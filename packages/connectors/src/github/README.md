@@ -80,12 +80,14 @@ The gateway verifies `X-Hub-Signature-256` in constant time. It routes by
 `installation` and `installation_repositories` events also emit a second event,
 `<delivery>:sender`, routed by `externalAccountId = sender.id`. A brand-new installation
 isn't in any account's route keys yet, so this is how its sync gets triggered. The payload
-sets `refreshRouteKeys: true`: the API or worker should re-read `/user/installations` and
-update `accounts.route_keys`.
+sets `refreshRouteKeys: true`, so the sync worker calls the connector's `refreshIdentity`.
+That re-reads `/user/installations` and returns the new route keys plus
+`meta.installations`, `needsInstall` and `installUrl`, which the worker stores on the
+account. An installation that gained write permissions is refused.
 
 `ping` and other events are acknowledged and ignored.
 
-## Fake mode (`CONNECTORS_FAKE=1`)
+## Fake mode (`CONNECTORS_FAKE=1` or `GITHUB_FAKE=1`)
 
 The store is `.dev/fake-github.json`, served through a fake fetch in GitHub's REST shapes,
 including 8-hour tokens and rotating refresh. OAuth redirects back with

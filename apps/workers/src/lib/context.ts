@@ -9,6 +9,7 @@ import {
 } from '@hub/connectors';
 import { accounts, subscriptions, type Db } from '@hub/db';
 import type { SecretStore } from '@hub/server/secrets';
+import type { AccountLock } from './lock';
 import { AccountFilters } from '@hub/shared';
 
 export type AccountRow = typeof accounts.$inferSelect;
@@ -159,7 +160,7 @@ export async function clearSubscription(db: Db, row: SourceRow, now: Date): Prom
  * and carries the source row's cursor and subscription plus the account's meta.
  */
 export async function connectorContext(
-  deps: { secrets: SecretStore },
+  deps: { secrets: SecretStore; lock?: AccountLock },
   account: AccountRow,
   opts: { source?: string; row?: SourceRow | null } = {},
 ): Promise<ConnectorContext> {
@@ -190,6 +191,10 @@ export async function connectorContext(
       tokens = await deps.secrets.getJson<OAuthTokens>(ref, { userId: account.userId });
       return tokens;
     },
+    // Serialize refreshes of this grant across sibling accounts (rotating refresh tokens).
+    ...(deps.lock
+      ? { withRefreshLock: <T>(fn: () => Promise<T>) => withGrantLock(deps.lock!, ref, fn) }
+      : {}),
     cursor: row?.cursor ?? null,
     filters: accountFilters(account),
     meta: accountMeta(account),
@@ -211,4 +216,27 @@ export function refreshContext(ctx: ConnectorContext, row: SourceRow): void {
     expiresAt: row.expiresAt,
     meta: metaOf(row),
   };
+}
+
+const REFRESH_LOCK_TTL_MS = 30_000;
+const REFRESH_LOCK_WAIT_MS = 15_000;
+
+/**
+ * Runs `fn` holding a lock on one token secret. Waits for a sibling that holds it (it is
+ * probably refreshing the same grant), then runs; after the wait budget it runs anyway,
+ * because the oauth2 helper still recovers from a lost race by reloading.
+ */
+async function withGrantLock<T>(lock: AccountLock, ref: string, fn: () => Promise<T>): Promise<T> {
+  const key = `grant-refresh:${ref}`;
+  const until = Date.now() + REFRESH_LOCK_WAIT_MS;
+  let release = await lock.tryAcquire(key, REFRESH_LOCK_TTL_MS);
+  while (!release && Date.now() < until) {
+    await new Promise((r) => setTimeout(r, 200));
+    release = await lock.tryAcquire(key, REFRESH_LOCK_TTL_MS);
+  }
+  try {
+    return await fn();
+  } finally {
+    await release?.();
+  }
 }

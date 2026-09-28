@@ -116,6 +116,9 @@ export class AnthropicProvider implements ModelProvider {
       opts.client ??
       new Anthropic({
         apiKey: opts.apiKey ?? null,
+        // Never fall back to ANTHROPIC_AUTH_TOKEN from the server env: it could be sent to a
+        // user-chosen base URL.
+        authToken: null,
         ...(opts.baseURL ? { baseURL: opts.baseURL } : {}),
         // The router owns retries and backoff.
         maxRetries: 0,

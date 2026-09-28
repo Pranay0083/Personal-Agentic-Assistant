@@ -164,9 +164,14 @@ export type GmailSendPayload = EmailSendPayload;
 
 /** Post to a Slack conversation. Channel and thread come from the stored item, never from a model. */
 export const SlackPostPayload = z.object({
-  channel: z.string().min(1),
+  /** Slack conversation id: C… (channel), G… (private/group), D… (DM). */
+  channel: z.string().regex(/^[CDG][A-Z0-9]{2,20}$/),
   text: z.string().min(1).max(4000),
-  threadTs: z.string().optional(),
+  /** Message timestamp of the thread parent, e.g. 1790596800.001000. */
+  threadTs: z
+    .string()
+    .regex(/^\d{9,11}\.\d{6}$/)
+    .optional(),
 });
 export type SlackPostPayload = z.infer<typeof SlackPostPayload>;
 

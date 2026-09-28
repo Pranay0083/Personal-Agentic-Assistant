@@ -32,7 +32,7 @@ import {
   type ConfluenceRecord,
 } from './confluence';
 import { startCursor } from './cursor';
-import { executeJira, findJiraExecuted, lookupTarget } from './execute';
+import { executeJira, findJiraExecuted, lookupTarget, type JiraResume } from './execute';
 import { fakeAtlassianFetch, fakeAuthUrl } from './fake';
 import { defaultFakeStore, type FakeAtlassianStore } from './fake-store';
 import { jiraBackfill, jiraDelta, normalizeJira, type JiraRecord } from './jira';
@@ -137,6 +137,9 @@ const blankCtx = (tokens: OAuthTokens): ConnectorContext => ({
 
 const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
 
+/** How long a lookup's resume hint stays valid for the following execute call. */
+const RESUME_TTL_MS = 10 * 60_000;
+
 /** Remembers recent execute targets so a same-process retry can look them up without a payload. */
 class RecentTargets {
   private map = new Map<string, Record<string, unknown>>();
@@ -169,6 +172,8 @@ export function createAtlassianConnector(
     me: str(ctx.meta?.atlassianAccountId),
   });
   const recent = new RecentTargets();
+  // Transition progress found by findExecuted for the execute call that follows it.
+  const resumes = new Map<string, { at: number; resume: JiraResume }>();
 
   async function myAccountId(ctx: ConnectorContext): Promise<string> {
     const known = str(ctx.meta?.atlassianAccountId);
@@ -344,7 +349,10 @@ export function createAtlassianConnector(
 
     async execute(ctx, action, payload, idempotencyKey) {
       recent.set(idempotencyKey, payload);
-      return executeJira(client(ctx), action, payload, idempotencyKey, now());
+      const r = resumes.get(idempotencyKey);
+      resumes.delete(idempotencyKey);
+      const resume = r && now() - r.at < RESUME_TTL_MS ? r.resume : null;
+      return executeJira(client(ctx), action, payload, idempotencyKey, now(), resume);
     },
 
     /**
@@ -353,6 +361,9 @@ export function createAtlassianConnector(
      * proposal payload as the 4th argument. Without it only targets executed by this
      * process are known; otherwise it throws rather than report "not sent".
      * Call it with the *read* token context (the write consent cannot read issues).
+     * A transition that moved the issue but crashed before its separate comment reports
+     * null and leaves a short-lived hint, so the execute call that follows posts only the
+     * comment instead of transitioning again.
      */
     async findExecuted(
       ctx: ConnectorContext,
@@ -364,7 +375,11 @@ export function createAtlassianConnector(
       const target = lookupTarget(action, payload ?? recent.get(idempotencyKey));
       if (!target)
         throw new ConnectorError(PROVIDER, 'findExecuted needs the proposal payload (issue key)');
-      return findJiraExecuted(client(ctx), action, idempotencyKey, target);
+      resumes.delete(idempotencyKey);
+      return findJiraExecuted(client(ctx), action, idempotencyKey, target, (resume) => {
+        if (resumes.size >= 500) resumes.delete(resumes.keys().next().value!);
+        resumes.set(idempotencyKey, { at: now(), resume });
+      });
     },
   };
   return connector;

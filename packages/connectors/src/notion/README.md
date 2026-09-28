@@ -21,8 +21,12 @@ http://localhost:4001` or `ngrok http 4001`. Subscribe to the page, database and
 When the subscription is created, Notion POSTs `{"verification_token":"secret_…"}`. That
 request is unsigned. The gateway handles it like this:
 
-- It answers 200 and emits no events.
-- It writes the token to `.dev/notion-webhook-verification-token` with mode 0600.
+- If `NOTION_WEBHOOK_VERIFICATION_TOKEN` is set, a handshake with any other token is
+  rejected (anyone can send one).
+- Otherwise it answers 200 and emits no events.
+- Outside production it creates `.dev/notion-webhook-verification-token` (mode 0600) only
+  if the file does not exist yet; it never overwrites it. In production nothing is
+  written: capture the token with a non-production gateway, or resend it from Notion.
 - It logs a hint and an 8-character sha256 fingerprint. The token itself is never logged.
 
 Then the operator:
@@ -64,7 +68,7 @@ waited out in-process; a longer one is passed to the queue as a `RetryableError`
 
 Tokens don't expire. `revoke` calls `POST /v1/oauth/revoke`.
 
-## Fake mode (`CONNECTORS_FAKE=1`)
+## Fake mode (`CONNECTORS_FAKE=1` or `NOTION_FAKE=1`)
 
 The store is `.dev/fake-notion.json`, served through a fake fetch in Notion's REST shapes.
 OAuth redirects straight back with `code=fake-notion:<workspace>`. Webhooks are signed with

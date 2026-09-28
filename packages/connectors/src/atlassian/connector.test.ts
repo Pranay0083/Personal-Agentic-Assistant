@@ -711,15 +711,19 @@ describe('execute', () => {
     });
     const r = await connector.execute!(ctx(), 'jira.transition', transition, 'key-1');
     expect(r).toMatchObject({ externalId: 'PROJ-482', toStatus: 'In Review' });
-    const body = bodyOf(calls[0]!) as {
+    // The pending marker is written before the transition.
+    expect(calls[0]!.url.pathname).toBe(prop);
+    expect(bodyOf(calls[0]!)).toMatchObject({ action: 'jira.transition', state: 'pending' });
+    expect(bodyOf(calls[0]!).result).toBeUndefined();
+    const body = bodyOf(calls[1]!) as {
       transition: { id: string };
       update: { comment: { add: { body: { type: string } } }[] };
     };
     expect(body.transition).toEqual({ id: '31' });
     expect(body.update.comment[0]!.add.body.type).toBe('doc');
-    expect(calls[1]!.url.pathname).toBe(prop);
+    expect(calls[2]!.url.pathname).toBe(prop);
     expect(execPropertyKey('key-1')).toMatch(/^hub\.exec\.[0-9a-f]{32}$/);
-    expect(bodyOf(calls[1]!)).toMatchObject({
+    expect(bodyOf(calls[2]!)).toMatchObject({
       action: 'jira.transition',
       result: { externalId: 'PROJ-482' },
     });
@@ -733,12 +737,54 @@ describe('execute', () => {
     });
     await connector.execute!(ctx(), 'jira.transition', transition, 'key-1');
     expect(calls.map((c) => `${c.method} ${c.url.pathname.split('/').slice(-1)[0]}`)).toEqual([
+      `PUT ${execPropertyKey('key-1')}`,
       'POST transitions',
       'POST transitions',
+      `PUT ${execPropertyKey('key-1')}`,
       'POST comment',
       `PUT ${execPropertyKey('key-1')}`,
     ]);
-    expect(bodyOf(calls[1]!).update).toBeUndefined();
+    expect(bodyOf(calls[2]!).update).toBeUndefined();
+    // Progress is recorded between the transition and the separate comment.
+    expect(bodyOf(calls[3]!)).toMatchObject({ state: 'transitioned' });
+    expect(bodyOf(calls[5]!)).toMatchObject({ result: { externalId: 'PROJ-482' } });
+  });
+
+  it('resumes a crash between the transition and its separate comment: comment only', async () => {
+    const posted = {
+      ...fx<Record<string, unknown>>('comment-created.json'),
+      properties: [{ key: 'hub.exec', value: { k: sha256Hex('key-1').slice(0, 32) } }],
+    };
+    let commented = false;
+    const { connector, calls } = setup({
+      [`GET ${prop}`]: {
+        key: 'x',
+        value: { action: 'jira.transition', at: 'x', state: 'transitioned' },
+      },
+      [`GET ${JIRA}/issue/PROJ-482/comment`]: {
+        status: 200,
+        body: () => ({ comments: commented ? [posted] : [], startAt: 0, maxResults: 50 }),
+      },
+      [`POST ${JIRA}/issue/PROJ-482/comment`]: {
+        status: 201,
+        body: () => {
+          commented = true;
+          return fx('comment-created.json');
+        },
+      },
+      [`POST ${JIRA}/issue/PROJ-482/transitions`]: { status: 204 },
+      [`PUT ${prop}`]: { status: 200 },
+    });
+    // A new process: the lookup (read token) finds the progress but no comment.
+    expect(await connector.findExecuted!(ctx(), 'jira.transition', 'key-1', transition)).toBeNull();
+    const r = await connector.execute!(ctx(), 'jira.transition', transition, 'key-1');
+    expect(r).toMatchObject({ externalId: 'PROJ-482', toStatus: 'In Review' });
+    const writes = calls.filter((c) => c.method !== 'GET').map((c) => c.url.pathname);
+    expect(writes).toEqual([`${JIRA}/issue/PROJ-482/comment`, prop]);
+    // The comment exists now: a further lookup reports done.
+    expect(
+      await connector.findExecuted!(ctx(), 'jira.transition', 'key-1', transition),
+    ).toMatchObject({ externalId: 'PROJ-482', commentId: '30010' });
   });
 
   it('comments in ADF with a comment marker', async () => {
@@ -803,23 +849,40 @@ describe('execute', () => {
       externalId: 'PROJ-482',
     });
 
-    // No property, but the issue is already in the target status.
+    // No property, but the issue is already in the target status: that alone proves
+    // nothing (someone else may have moved it), so it is not executed.
+    const inReview = {
+      id: '10482',
+      key: 'PROJ-482',
+      fields: { status: { name: 'In Review' }, updated: 'x' },
+    };
     m = setup({
       [`GET ${prop}`]: { status: 404 },
-      [`GET ${JIRA}/issue/PROJ-482`]: {
-        id: '10482',
-        key: 'PROJ-482',
-        fields: { status: { name: 'In Review' }, updated: 'x' },
+      [`GET ${JIRA}/issue/PROJ-482`]: inReview,
+    });
+    f = m.connector.findExecuted as Find;
+    expect(await f(ctx(), 'jira.transition', 'key-1', transition)).toBeNull();
+
+    // Our pending marker (crash between the transition and the final marker) plus the
+    // target status: done.
+    m = setup({
+      [`GET ${prop}`]: {
+        key: 'x',
+        value: { action: 'jira.transition', at: 'x', state: 'pending' },
       },
+      [`GET ${JIRA}/issue/PROJ-482`]: inReview,
     });
     f = m.connector.findExecuted as Find;
     expect(await f(ctx(), 'jira.transition', 'key-1', transition)).toMatchObject({
       alreadyInStatus: true,
     });
 
-    // Neither: not executed.
+    // Pending marker, not in the target status: not executed.
     m = setup({
-      [`GET ${prop}`]: { status: 404 },
+      [`GET ${prop}`]: {
+        key: 'x',
+        value: { action: 'jira.transition', at: 'x', state: 'pending' },
+      },
       [`GET ${JIRA}/issue/PROJ-482`]: {
         id: '10482',
         key: 'PROJ-482',
@@ -912,6 +975,53 @@ describe('tokens and errors', () => {
     expect(r.records).toHaveLength(1);
     expect(c.saved[0]!.refreshToken).toBe('eyJraWQiOiJmYWtlIn0.refresh-2-rotated.sig');
     expect(calls.map((x) => x.method)).toEqual(['POST', 'POST', 'POST']);
+  });
+
+  it('on a 401 picks up a token a sibling already rotated instead of refreshing', async () => {
+    const { connector, calls } = setup({
+      'POST /oauth/token': { status: 400, body: { error: 'invalid_grant' } },
+      [`POST ${JIRA}/search/jql`]: seq(
+        { status: 401, body: fx('error-401.json') },
+        fx('search-page-2.json'),
+      ),
+    });
+    const stored = {
+      accessToken: 'at-sibling',
+      refreshToken: 'rt-sibling',
+      expiresAt: Date.now() + 3600_000,
+    };
+    const c = ctx({
+      cursor: JSON.stringify({ v: 1, t: '2026-09-28T10:00:00.000Z', seen: {} }),
+      reloadTokens: async () => stored,
+    });
+    const r = await connector.fetchDelta(c);
+    expect(r.records).toHaveLength(1);
+    expect(calls.some((x) => x.url.pathname === '/oauth/token')).toBe(false);
+    expect(calls[1]!.headers.authorization).toBe('Bearer at-sibling');
+    expect(c.tokens).toEqual(stored);
+    expect(c.saved).toHaveLength(0);
+  });
+
+  it('on a 401 refreshes with the sibling-rotated refresh token when the stored one is stale', async () => {
+    const { connector, calls } = setup({
+      'POST /oauth/token': fx('token-refresh.json'),
+      [`POST ${JIRA}/search/jql`]: seq(
+        { status: 401, body: fx('error-401.json') },
+        fx('search-page-2.json'),
+      ),
+    });
+    const c = ctx({
+      cursor: JSON.stringify({ v: 1, t: '2026-09-28T10:00:00.000Z', seen: {} }),
+      reloadTokens: async () => ({
+        accessToken: 'at-1',
+        refreshToken: 'rt-sibling',
+        expiresAt: Date.now() - 1,
+      }),
+    });
+    await connector.fetchDelta(c);
+    const refresh = calls.find((x) => x.url.pathname === '/oauth/token')!;
+    expect(bodyOf(refresh)).toMatchObject({ refresh_token: 'rt-sibling' });
+    expect(c.saved[0]!.refreshToken).toBe('eyJraWQiOiJmYWtlIn0.refresh-2-rotated.sig');
   });
 
   it('asks for a reconnect when the grant is gone', async () => {

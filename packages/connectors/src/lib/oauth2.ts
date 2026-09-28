@@ -130,14 +130,43 @@ export async function refreshTokens(cfg: OAuth2Config, tokens: OAuthTokens): Pro
 /**
  * Returns a valid access token for `ctx`, refreshing (and saving via ctx.saveTokens) when it
  * expires within a minute. Tokens without an expiry (Notion, Slack without rotation) pass through.
+ *
+ * `opts.rejected` is an access token the provider just refused (a 401): it counts as expired,
+ * so the caller's retry goes through the same refresh and sibling-reload logic: the stored
+ * tokens are re-read first (another account of the same grant may already have rotated
+ * them), and only then refreshed.
  */
 export async function accessToken(
   cfg: OAuth2Config,
   ctx: ConnectorContext,
   now = Date.now(),
+  opts: { rejected?: string } = {},
 ): Promise<string> {
-  const fresh = (t: OAuthTokens) => !t.expiresAt || t.expiresAt - now > 60_000;
+  const fresh = (t: OAuthTokens) =>
+    (opts.rejected === undefined || t.accessToken !== opts.rejected) &&
+    (!t.expiresAt || t.expiresAt - now > 60_000);
   if (fresh(ctx.tokens)) return ctx.tokens.accessToken;
+  const run = () => refreshFor(cfg, ctx, fresh, opts, !!ctx.withRefreshLock);
+  return ctx.withRefreshLock ? ctx.withRefreshLock(run) : run();
+}
+
+async function refreshFor(
+  cfg: OAuth2Config,
+  ctx: ConnectorContext,
+  fresh: (t: OAuthTokens) => boolean,
+  opts: { rejected?: string },
+  locked: boolean,
+): Promise<string> {
+  // Under the lock, or after a 401, look at the stored tokens first: a sibling may already
+  // have refreshed (we may have waited for it) or rotated the refresh token.
+  if ((locked || opts.rejected !== undefined) && ctx.reloadTokens) {
+    const stored = await ctx.reloadTokens();
+    if (fresh(stored)) {
+      ctx.tokens = stored;
+      return stored.accessToken;
+    }
+    if (stored.refreshToken && stored.refreshToken !== ctx.tokens.refreshToken) ctx.tokens = stored;
+  }
   let next: OAuthTokens;
   try {
     next = await refreshTokens(cfg, ctx.tokens);

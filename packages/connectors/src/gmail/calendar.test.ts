@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { AccountFilters } from '@hub/shared';
 import { sha256Hex } from '../lib/crypto';
 import type { CalendarEvent, CalendarEventList, CalendarRecord } from './calendar';
-import { calendarAccepts, normalizeCalendar } from './calendar';
+import { calendarAccepts, calendarDelta, normalizeCalendar } from './calendar';
 import { createGmailConnector } from './connector';
 import { fixture } from './fixtures/index';
 import { fail, recordedRest, testCtx } from './testing';
@@ -100,6 +100,71 @@ describe('calendar delta', () => {
       null,
       null,
     ]);
+  });
+
+  it('caps pages per call and resumes from the page token carried in the cursor', async () => {
+    const pageN = (n: number): CalendarEventList => ({
+      items: [{ ...invite!, id: `ev-${n}` }],
+      ...(n < 3 ? { nextPageToken: `p${n + 1}` } : { nextSyncToken: 'CPjA-next' }),
+    });
+    const routes = {
+      [`GET ${EVENTS}`]: (req: { params?: Record<string, unknown> }) => {
+        const t = req.params?.pageToken;
+        return pageN(t ? Number(String(t).slice(1)) : 1);
+      },
+    };
+    const r = recordedRest(routes);
+    const first = await calendarDelta(r.rest, {
+      cursor: 'CPjA-old',
+      accountEmail: 'alex@company.example',
+      maxPages: 2,
+    });
+    expect(first.records.map((x) => x.event.id)).toEqual(['ev-1', 'ev-2']);
+    expect(first.hasMore).toBe(true);
+    expect(JSON.parse(first.cursor!)).toEqual({ v: 1, syncToken: 'CPjA-old', pageToken: 'p3' });
+    expect(r.calls).toHaveLength(2);
+
+    const second = await calendarDelta(r.rest, {
+      cursor: first.cursor,
+      accountEmail: 'alex@company.example',
+      maxPages: 2,
+    });
+    expect(second.records.map((x) => x.event.id)).toEqual(['ev-3']);
+    expect(second.hasMore).toBeUndefined();
+    // Back to the plain-token format once the round is complete.
+    expect(second.cursor).toBe('CPjA-next');
+    expect(r.calls[2]!.params).toMatchObject({ syncToken: 'CPjA-old', pageToken: 'p3' });
+
+    // Through the connector the default cap applies (10 pages).
+    const many = recordedRest({
+      [`GET ${EVENTS}`]: (req: { params?: Record<string, unknown> }) => ({
+        items: [],
+        nextPageToken: `x${Number(String(req.params?.pageToken ?? 'x0').slice(1)) + 1}`,
+      }),
+    });
+    const c = createGmailConnector({ config: { fake: false }, restFactory: many.factory });
+    const d = await c.fetchDelta(testCtx('calendar', { cursor: 'CPjA-old' }));
+    expect(many.calls).toHaveLength(10);
+    expect(d.hasMore).toBe(true);
+    expect(JSON.parse(d.cursor!)).toMatchObject({ syncToken: 'CPjA-old', pageToken: 'x10' });
+  });
+
+  it('restarts the round when a stored page token is refused; bad cursors resync', async () => {
+    const r = recordedRest({
+      [`GET ${EVENTS}`]: (req: { params?: Record<string, unknown> }) =>
+        req.params?.pageToken ? fail(400, { error: { code: 400 } })() : page2,
+    });
+    const d = await calendarDelta(r.rest, {
+      cursor: JSON.stringify({ v: 1, syncToken: 'CPjA-old', pageToken: 'stale' }),
+      accountEmail: 'alex@company.example',
+    });
+    expect(d.cursor).toBe(page2.nextSyncToken);
+    expect(r.calls.map((x) => x.params?.pageToken)).toEqual(['stale', undefined]);
+
+    const bad = recordedRest({ [`GET ${EVENTS}`]: fixture('calendar-sync-token.json') });
+    expect(
+      await calendarDelta(bad.rest, { cursor: '{"nope":1}', accountEmail: 'a@b.example' }),
+    ).toMatchObject({ records: [], fullResyncRequired: true });
   });
 
   it('410 Gone → fullResyncRequired with a fresh token', async () => {

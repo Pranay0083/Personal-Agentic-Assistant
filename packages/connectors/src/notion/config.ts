@@ -14,7 +14,7 @@ export const NOTION_REVOKE_URL = `${NOTION_API}/v1/oauth/revoke`;
 export const FAKE_NOTION_VERIFICATION_TOKEN = 'fake-notion-token';
 
 export type NotionConfig = {
-  /** Serve the fake store instead of api.notion.com (CONNECTORS_FAKE=1). Never production. */
+  /** Serve the fake store instead of api.notion.com (CONNECTORS_FAKE=1 or NOTION_FAKE=1). Never production. */
   fake: boolean;
   clientId?: string;
   clientSecret?: string;
@@ -25,7 +25,7 @@ export type NotionConfig = {
 export function notionConfigFromEnv(e: NodeJS.ProcessEnv = process.env): NotionConfig {
   const opt = (v: string | undefined) => (v ? v : undefined);
   return {
-    fake: fakeMode(),
+    fake: fakeMode('NOTION_FAKE'),
     clientId: opt(e.NOTION_CLIENT_ID),
     clientSecret: opt(e.NOTION_CLIENT_SECRET),
     webhookVerificationToken: opt(e.NOTION_WEBHOOK_VERIFICATION_TOKEN),

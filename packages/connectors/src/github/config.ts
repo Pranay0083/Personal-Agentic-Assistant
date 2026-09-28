@@ -26,7 +26,7 @@ export type GithubConfig = {
 export function githubConfigFromEnv(e: NodeJS.ProcessEnv = process.env): GithubConfig {
   const opt = (v: string | undefined) => (v ? v : undefined);
   return {
-    fake: fakeMode(),
+    fake: fakeMode('GITHUB_FAKE'),
     appId: opt(e.GITHUB_APP_ID),
     appSlug: opt(e.GITHUB_APP_SLUG),
     clientId: opt(e.GITHUB_CLIENT_ID),

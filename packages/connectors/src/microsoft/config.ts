@@ -1,3 +1,4 @@
+import { ConnectorError } from '../errors';
 import { fakeMode, type FetchFn } from '../lib/index';
 
 /** Tenant id Microsoft uses for every personal (MSA: outlook.com, hotmail.com, live.com) account. */
@@ -58,7 +59,7 @@ export type MicrosoftConfig = {
    * Optional separate Entra app for the Mail.Send consent. Microsoft puts every scope a user
    * consented to for an app into that app's tokens, so with one app a later write consent
    * would leak Mail.Send into read tokens (the read exchange then refuses the grant).
-   * Falls back to the read app.
+   * Without it the write consent is not offered (see writeConfigured), except in fake mode.
    */
   writeClientId?: string;
   writeClientSecret?: string;
@@ -114,12 +115,34 @@ export function authorizeEndpoint(cfg: Pick<MicrosoftConfig, 'loginBaseUrl' | 't
   return `${cfg.loginBaseUrl}/${encodeURIComponent(cfg.tenant)}/oauth2/v2.0/authorize`;
 }
 
-/** Client credentials for a consent kind: the write app when configured, else the read app. */
+/**
+ * True when the write consent can be offered: a separate write app is configured, or fake
+ * mode. Microsoft puts every scope consented to one app into its tokens, so a Mail.Send
+ * consent on the read app would silently give the read tokens Mail.Send.
+ */
+export function writeConfigured(cfg: MicrosoftConfig): boolean {
+  return cfg.fake || (!!cfg.writeClientId && !!cfg.writeClientSecret);
+}
+
+/** Client credentials for a consent kind. Write needs the separate write app (or fake mode). */
 export function clientFor(cfg: MicrosoftConfig, access: 'read' | 'write') {
-  if (access === 'write' && cfg.writeClientId && cfg.writeClientSecret) {
-    return { clientId: cfg.writeClientId, clientSecret: cfg.writeClientSecret };
+  if (access === 'write') {
+    if (cfg.writeClientId && cfg.writeClientSecret) {
+      return { clientId: cfg.writeClientId, clientSecret: cfg.writeClientSecret };
+    }
+    if (!cfg.fake) {
+      throw new ConnectorError(
+        'microsoft',
+        'write consent needs a separate Entra app (MS_WRITE_CLIENT_ID/SECRET)',
+      );
+    }
   }
   return { clientId: cfg.clientId ?? '', clientSecret: cfg.clientSecret ?? '' };
+}
+
+/** Graph permissions in a grant that can change data (identity scopes excluded). */
+export function writeScopesIn(scopes: string[]): string[] {
+  return scopes.filter((s) => !IDENTITY_SCOPES.has(s.toLowerCase()) && isWriteScope(s));
 }
 
 export function scopesFor(cfg: Pick<MicrosoftConfig, 'channelMessages'>, access: 'read' | 'write') {

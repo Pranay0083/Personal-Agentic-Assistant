@@ -97,26 +97,76 @@ export async function calendarSyncToken(rest: GoogleRest, now = Date.now()): Pro
   throw new Error('calendar: no sync token returned');
 }
 
+/** events.list pages read per fetchDelta call before returning `hasMore`. */
+export const CALENDAR_MAX_PAGES = 10;
+
+/**
+ * Delta cursor. Stored as the bare sync token when a sync round is complete (the format
+ * older cursors already have), or as JSON `{v:1,syncToken,pageToken}` while a round is
+ * paged across several fetchDelta calls. Sync tokens never start with `{`.
+ */
+export type CalendarCursor = { syncToken: string; pageToken?: string };
+
+export function parseCalendarCursor(cursor: string): CalendarCursor | null {
+  if (!cursor.startsWith('{')) return cursor ? { syncToken: cursor } : null;
+  try {
+    const c = JSON.parse(cursor) as { v?: unknown; syncToken?: unknown; pageToken?: unknown };
+    if (c.v !== 1 || typeof c.syncToken !== 'string' || !c.syncToken) return null;
+    return {
+      syncToken: c.syncToken,
+      ...(typeof c.pageToken === 'string' && c.pageToken ? { pageToken: c.pageToken } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function encodeCalendarCursor(c: CalendarCursor): string {
+  return c.pageToken ? JSON.stringify({ v: 1, ...c }) : c.syncToken;
+}
+
 export async function calendarDelta(
   rest: GoogleRest,
-  opts: { cursor: string | null; accountEmail: string },
+  opts: { cursor: string | null; accountEmail: string; maxPages?: number },
 ): Promise<DeltaResult<CalendarRecord>> {
   if (!opts.cursor) return { records: [], cursor: await calendarSyncToken(rest) };
+  const cur = parseCalendarCursor(opts.cursor);
+  if (!cur) {
+    return { records: [], cursor: await calendarSyncToken(rest), fullResyncRequired: true };
+  }
+  const maxPages = Math.max(1, opts.maxPages ?? CALENDAR_MAX_PAGES);
   const records: CalendarRecord[] = [];
-  let pageToken: string | undefined;
+  const list = (pageToken: string | undefined) =>
+    rest<CalendarEventList>({
+      url: EVENTS_URL,
+      params: { syncToken: cur.syncToken, maxResults: 250, pageToken },
+    });
+  let pageToken = cur.pageToken;
   try {
-    for (;;) {
-      const res = await rest<CalendarEventList>({
-        url: EVENTS_URL,
-        params: { syncToken: opts.cursor, maxResults: 250, pageToken },
-      });
+    for (let page = 0; page < maxPages; page++) {
+      let res: CalendarEventList;
+      try {
+        res = await list(pageToken);
+      } catch (e) {
+        // A stored page token Google no longer accepts: restart the round from the sync
+        // token (records are upserted by id, so re-reading pages is harmless).
+        if (page > 0 || !pageToken || httpStatusOf(e) !== 400) throw e;
+        pageToken = undefined;
+        res = await list(undefined);
+      }
       for (const event of res.items ?? []) {
         records.push({ event, calendarId: CALENDAR_ID, accountEmail: opts.accountEmail });
       }
       if (res.nextSyncToken) return { records, cursor: res.nextSyncToken };
-      if (!res.nextPageToken) return { records, cursor: opts.cursor };
+      if (!res.nextPageToken) return { records, cursor: cur.syncToken };
       pageToken = res.nextPageToken;
     }
+    // Page cap reached: resume from the next page on the next call.
+    return {
+      records,
+      cursor: encodeCalendarCursor({ syncToken: cur.syncToken, pageToken }),
+      hasMore: true,
+    };
   } catch (e) {
     if (httpStatusOf(e) === 410) {
       // Sync token expired: start again from now; the caller backfills.

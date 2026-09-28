@@ -71,10 +71,27 @@ Work one phase at a time. Tick boxes as you go. Each phase ends with its accepta
 
 ## Phase 5 — More connectors and providers
 
-- [ ] Microsoft 365 (Outlook, Teams, OneDrive) with Graph subscriptions and delta queries
-- [ ] Slack (per workspace), Atlassian (per site), Notion, GitHub
-- [ ] Model adapters: OpenAI, Bedrock, Vertex, OpenAI-compatible (Groq, OpenRouter, Azure, custom gateway) — _OpenAI and OpenAI-compatible done; Bedrock/Vertex are stubs_
+- [x] Microsoft 365 (Outlook, Teams, OneDrive) with Graph subscriptions and delta queries
+- [x] Slack (per workspace), Atlassian (per site), Notion, GitHub
+- [x] Google Workspace on the Google account: Calendar, Drive, Chat (added to the plan)
+- [x] Model adapters: OpenAI, Bedrock, Vertex, OpenAI-compatible (Groq, OpenRouter, Azure, custom gateway)
 - [x] Per-agent model picker and provider setup screens; fallback toggle; monthly cap
-- [x] Connectors screen with per-account status and reconnect (Gmail only so far)
+- [x] Connectors screen with per-account status and reconnect
 
 **Accept:** each connector passes its fixture tests and a live smoke test; switching triage to Groq and planning to Bedrock works, and killing a provider falls back cleanly.
+
+> ✅ Every connector passes its recorded-fixture tests, and `pnpm acceptance:connectors`
+> runs all of them end to end in demo mode (connect → subscribe → signed webhook → sync →
+> item on the right account with trusted signals → task/draft): 26/26. Router tests cover
+> triage on Groq, planning on Bedrock, and clean fallback when either provider fails.
+> ⏳ Still to do: the **live** smoke test per provider needs real provider apps (setup in
+> `docs/CONNECTORS.md`), plus real Bedrock/Vertex accounts. Known items to verify live:
+> Slack `search.messages` with only `after:`, Graph `reply` keeping extended properties,
+> Google Calendar/Drive first-sync window (a change between connect and the first sync is
+> picked up by backfill, not the delta).
+
+## Phase 6 — Later
+
+- [ ] Mac helper app (Obsidian vault, Apple Notes, Reminders, iMessage) pushing to the API
+- [ ] Local models via Ollama
+- [ ] Data export and "delete everything" flow end to end

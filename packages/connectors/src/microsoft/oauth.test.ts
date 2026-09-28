@@ -4,10 +4,11 @@ import { isWriteScope, MS_READ_SCOPES } from './config';
 import { NOW, WORK_ID, fx, replay, testCtx } from './test-helpers';
 
 const TOKEN = 'POST /common/oauth2/v2.0/token';
+const WRITE_APP = { writeClientId: 'client-write', writeClientSecret: 'secret-write' };
 
 describe('microsoft oauth', () => {
   it('asks for delegated read-only scopes on connect and only Mail.Send for writes', () => {
-    const { connector } = replay({});
+    const { connector } = replay({}, WRITE_APP);
     const read = new URL(
       connector.connect.authUrl({
         state: 's1',
@@ -135,17 +136,17 @@ describe('microsoft oauth', () => {
       noRefresh.connector.connect.exchange({ code: 'c', redirectUri: 'https://x', access: 'read' }),
     ).rejects.toBeInstanceOf(MissingScopeError);
 
-    const readAsWrite = replay({ [TOKEN]: fx('token-read-work.json') });
+    const readAsWrite = replay({ [TOKEN]: fx('token-read-work.json') }, WRITE_APP);
     const e = (await readAsWrite.connector.connect
       .exchange({ code: 'c', redirectUri: 'https://x', access: 'write' })
       .catch((x: unknown) => x)) as MissingScopeError;
     expect(e).toBeInstanceOf(MissingScopeError);
     expect(e.missing).toEqual(['Mail.Send']);
 
-    const write = replay({
-      [TOKEN]: fx('token-write-work.json'),
-      'GET /v1.0/me': fx('me-work.json'),
-    });
+    const write = replay(
+      { [TOKEN]: fx('token-write-work.json'), 'GET /v1.0/me': fx('me-work.json') },
+      WRITE_APP,
+    );
     const ok = await write.connector.connect.exchange({
       code: 'c',
       redirectUri: 'https://x',
@@ -200,5 +201,40 @@ describe('microsoft oauth', () => {
     expect(replay({}).connector.configured()).toBe(true);
     expect(replay({}, { clientId: undefined }).connector.configured()).toBe(false);
     expect(replay({}, { clientId: undefined, fake: true }).connector.configured()).toBe(true);
+  });
+
+  it('offers the write consent only with a separate write app (or fake mode)', async () => {
+    expect(replay({}).connector.writeConfigured!()).toBe(false);
+    expect(replay({}, { writeClientId: 'client-write' }).connector.writeConfigured!()).toBe(false);
+    expect(replay({}, WRITE_APP).connector.writeConfigured!()).toBe(true);
+    expect(replay({}, { fake: true }).connector.writeConfigured!()).toBe(true);
+
+    const { connector, calls } = replay({ [TOKEN]: fx('token-write-work.json') });
+    expect(() =>
+      connector.connect.authUrl({ state: 's', redirectUri: 'https://x', access: 'write' }),
+    ).toThrow(ConnectorError);
+    // Never falls back to the read app for a write code exchange either.
+    await expect(
+      connector.connect.exchange({ code: 'c', redirectUri: 'https://x', access: 'write' }),
+    ).rejects.toBeInstanceOf(ConnectorError);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses a refreshed read token that carries a write scope and does not save it', async () => {
+    const { connector, calls } = replay({
+      [TOKEN]: {
+        ...fx<Record<string, unknown>>('token-refresh.json'),
+        scope: 'Calendars.Read Mail.Read Mail.Send User.Read openid profile email',
+      },
+      'GET /v1.0/me/drive/root/delta': fx('drive-delta-latest.json'),
+    });
+    const ctx = testCtx({
+      source: 'onedrive',
+      tokens: { accessToken: 'old', refreshToken: 'rt-old', expiresAt: NOW + 10_000 },
+    });
+    await expect(connector.fetchDelta(ctx)).rejects.toBeInstanceOf(ReconnectRequiredError);
+    expect(ctx.saved).toHaveLength(0);
+    expect(ctx.tokens.accessToken).toBe('old');
+    expect(calls.filter((c) => c.url.pathname.startsWith('/v1.0/'))).toHaveLength(0);
   });
 });

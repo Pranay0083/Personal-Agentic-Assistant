@@ -440,6 +440,28 @@ describe('gateway: routing, secrets and handshakes (generic connectors)', () => 
     ]);
   });
 
+  it('refuses account-routed events without a secret when the source registered one', async () => {
+    result = {
+      ok: true,
+      events: [
+        { providerEventId: 'ns1', externalAccountId: 'tenant:alex', source: 'mail', payload: {} },
+      ],
+    };
+    await hook('/hooks/microsoft');
+    expect(syncJobs()).toEqual([]);
+  });
+
+  it('skips a disabled source when routed by account', async () => {
+    result = {
+      ok: true,
+      events: [
+        { providerEventId: 'ds1', externalAccountId: 'tenant:alex', source: 'teams', payload: {} },
+      ],
+    };
+    await hook('/hooks/microsoft');
+    expect(syncJobs()).toEqual([]);
+  });
+
   it('ignores disabled sources and unknown subscriptions', async () => {
     result = {
       ok: true,
@@ -525,5 +547,44 @@ describe('gateway: routing, secrets and handshakes (generic connectors)', () => 
     expect(
       (await t.db.select().from(accounts).where(eq(accounts.id, row!.accountId!)))[0]!.externalId,
     ).toBe('T2:U2');
+  });
+});
+
+describe('gateway request logging', () => {
+  it('never logs the query string (providers put shared secrets there)', async () => {
+    const lines: string[] = [];
+    const rec =
+      () =>
+      (...args: unknown[]) =>
+        void lines.push(JSON.stringify(args));
+    const logger = {
+      level: 'info',
+      info: rec(),
+      warn: rec(),
+      error: rec(),
+      debug: rec(),
+      fatal: rec(),
+      trace: rec(),
+      silent: () => {},
+      child() {
+        return logger;
+      },
+    } as unknown as Parameters<typeof buildGateway>[0]['logger'];
+    const gw = buildGateway({
+      db: t.db,
+      enqueue: async () => {},
+      getConnector: () => undefined,
+      logger,
+    });
+    await gw.inject({
+      method: 'POST',
+      url: '/hooks/atlassian?sub=atl_1&t=very-secret-value',
+      payload: {},
+    });
+    await gw.close();
+    const all = lines.join('\n');
+    expect(all).toContain('/hooks/:provider');
+    expect(all).not.toContain('very-secret-value');
+    expect(all).not.toContain('t=');
   });
 });

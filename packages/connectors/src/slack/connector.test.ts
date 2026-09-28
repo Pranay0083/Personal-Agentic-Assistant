@@ -26,7 +26,16 @@ const config: SlackConfig = {
   authorizeUrl: 'https://slack.com/oauth/v2/authorize',
 };
 
-function make(routes: Routes, over: { pageSize?: number; maxPagesPerDelta?: number } = {}) {
+const writeApp: SlackConfig = {
+  ...config,
+  writeClientId: 'wcid',
+  writeClientSecret: 'wsecret',
+};
+
+function make(
+  routes: Routes,
+  over: { pageSize?: number; maxPagesPerDelta?: number; config?: SlackConfig } = {},
+) {
   const mock = mockFetch(routes);
   const connector = createSlackConnector({ config, fetch: mock.fetch, now: () => NOW, ...over });
   return { connector, calls: mock.calls };
@@ -72,7 +81,7 @@ const FLOOR = '1790593200.000000';
 
 describe('slack connect', () => {
   it('builds a user-scope authorize URL with read scopes only', () => {
-    const { connector } = make({});
+    const { connector } = make({}, { config: writeApp });
     const u = new URL(
       connector.connect.authUrl({ state: 's1', redirectUri: 'https://api.x/cb', access: 'read' }),
     );
@@ -94,6 +103,29 @@ describe('slack connect', () => {
       connector.connect.authUrl({ state: 's', redirectUri: 'https://api.x/cb', access: 'write' }),
     );
     expect(w.searchParams.get('user_scope')).toBe('chat:write');
+    expect(w.searchParams.get('client_id')).toBe('wcid');
+    expect(u.searchParams.get('client_id')).toBe('cid');
+  });
+
+  it('offers the write consent only with a separate write app (or fake mode)', async () => {
+    expect(make({}).connector.writeConfigured!()).toBe(false);
+    expect(
+      make({}, { config: { ...config, writeClientId: 'wcid' } }).connector.writeConfigured!(),
+    ).toBe(false);
+    expect(make({}, { config: writeApp }).connector.writeConfigured!()).toBe(true);
+    expect(make({}, { config: { ...config, fake: true } }).connector.writeConfigured!()).toBe(true);
+
+    const { connector, calls } = make({
+      'POST /api/oauth.v2.access': load('oauth-v2-access-write.json'),
+    });
+    expect(() =>
+      connector.connect.authUrl({ state: 's', redirectUri: 'https://api.x/cb', access: 'write' }),
+    ).toThrow(ConnectorError);
+    // Never falls back to the read app for a write code exchange either.
+    await expect(
+      connector.connect.exchange({ code: 'c', redirectUri: 'https://x/cb', access: 'write' }),
+    ).rejects.toBeInstanceOf(ConnectorError);
+    expect(calls).toHaveLength(0);
   });
 
   it('exchanges the code for the user token with rotation and one identity per workspace', async () => {
@@ -152,10 +184,13 @@ describe('slack connect', () => {
   });
 
   it('accepts a chat:write grant for the write consent', async () => {
-    const { connector } = make({
-      'POST /api/oauth.v2.access': load('oauth-v2-access-write.json'),
-      'GET /api/auth.test': load('auth-test.json'),
-    });
+    const { connector, calls } = make(
+      {
+        'POST /api/oauth.v2.access': load('oauth-v2-access-write.json'),
+        'GET /api/auth.test': load('auth-test.json'),
+      },
+      { config: writeApp },
+    );
     const r = await connector.connect.exchange({
       code: 'c',
       redirectUri: 'https://x/cb',
@@ -163,6 +198,7 @@ describe('slack connect', () => {
     });
     expect(r.externalId).toBe('T0ACME0001:U0ALEX0001');
     expect(r.tokens.scope).toBe('chat:write');
+    expect(calls[0]!.body).toContain('client_secret=wsecret');
   });
 
   it('maps an invalid code to a ConnectorError', async () => {
@@ -401,6 +437,65 @@ describe('slack fetchDelta', () => {
         }),
       ),
     ).rejects.toBeInstanceOf(ReconnectRequiredError);
+  });
+
+  it('refuses a refreshed read token that gained write scopes, without saving it', async () => {
+    const refreshed = load<{ scope: string }>('oauth-v2-refresh.json');
+    refreshed.scope += ',chat:write';
+    const { connector, calls } = make(readRoutes({ 'POST /api/oauth.v2.access': refreshed }), {
+      config: writeApp,
+    });
+    const saved: OAuthTokens[] = [];
+    const c = ctx({
+      cursor: encodeCursor({ v: 1, ts: FLOOR }),
+      tokens: {
+        accessToken: 'xoxe.xoxp-old',
+        refreshToken: 'xoxe-1-r',
+        expiresAt: NOW + 10_000,
+        scope: 'channels:history,search:read',
+      },
+      saveTokens: async (t) => {
+        saved.push(t);
+      },
+    });
+    await expect(connector.fetchDelta(c)).rejects.toBeInstanceOf(ReconnectRequiredError);
+    expect(saved).toHaveLength(0);
+    expect(calls).toHaveLength(1);
+    // The read token refreshes through the read app.
+    expect(calls[0]!.body).toContain('client_id=cid');
+  });
+
+  it('refreshes a write-app token through the write app', async () => {
+    const refreshed = {
+      ...load<Record<string, unknown>>('oauth-v2-refresh.json'),
+      scope: 'chat:write',
+    };
+    const { connector, calls } = make(
+      {
+        'POST /api/oauth.v2.access': refreshed,
+        'POST /api/chat.postMessage': load('chat-post-message.json'),
+      },
+      { config: writeApp },
+    );
+    const saved: OAuthTokens[] = [];
+    await connector.execute!(
+      ctx({
+        tokens: {
+          accessToken: 'w',
+          refreshToken: 'wr',
+          expiresAt: NOW + 10_000,
+          scope: 'chat:write',
+        },
+        saveTokens: async (t) => {
+          saved.push(t);
+        },
+      }),
+      'slack.post',
+      { channel: 'C0ENG00001', text: 'hi' },
+      'key-1',
+    );
+    expect(calls[0]!.body).toContain('client_id=wcid');
+    expect(saved[0]?.scope).toBe('chat:write');
   });
 
   it('rejects unknown sources', async () => {

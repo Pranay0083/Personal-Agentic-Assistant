@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConnectorError, ReconnectRequiredError, RetryableError } from '../errors';
 import { fixture, MemoryStore, mockFetch } from '../lib/fake';
 import type { ConnectorContext, OAuthTokens, WebhookRequest } from '../types';
-import { GITHUB_API_VERSION } from './config';
+import { GITHUB_API_VERSION, githubConfigFromEnv } from './config';
 import { createGithubConnector, parseGithubCursor } from './connector';
 import { fakeGithubAction, seedFakeGithub, type FakeGithubState } from './fake';
 import type { GithubIssue } from './client';
@@ -384,6 +384,49 @@ describe('github connect', () => {
   });
 });
 
+describe('github refreshIdentity', () => {
+  it('re-reads the installations into route keys and install meta', async () => {
+    const api = githubApi();
+    const c = connectorWith(api.fetch);
+    const r = await c.refreshIdentity!(ctx(CURSOR));
+    expect(r.routeKeys).toEqual(['7001', '7002']);
+    expect(r.meta).toMatchObject({
+      installations: [
+        { id: 7001, account: 'acme' },
+        { id: 7002, account: 'alexkim' },
+      ],
+      needsInstall: false,
+      installUrl: 'https://github.com/apps/hub-context/installations/new',
+    });
+    expect(api.calls.map((x) => x.url.pathname)).toEqual(['/user/installations']);
+    expect(api.calls[0]!.headers.authorization).toBe('Bearer ghu_current');
+  });
+
+  it('reports needsInstall when every installation is gone', async () => {
+    const api = githubApi({ 'GET /user/installations': f('installations-empty.json') });
+    const r = await connectorWith(api.fetch).refreshIdentity!(ctx(CURSOR));
+    expect(r.routeKeys).toEqual([]);
+    expect(r.meta).toMatchObject({ installations: [], needsInstall: true });
+  });
+
+  it('refuses an installation that gained write permissions', async () => {
+    const api = githubApi({ 'GET /user/installations': f('installations-write.json') });
+    await expect(connectorWith(api.fetch).refreshIdentity!(ctx(CURSOR))).rejects.toBeInstanceOf(
+      ConnectorError,
+    );
+  });
+
+  it('refreshes an expiring user token first', async () => {
+    const api = githubApi();
+    const c = ctx(CURSOR, {
+      tokens: { accessToken: 'ghu_old', refreshToken: 'ghr_old', expiresAt: NOW + 1000 },
+    });
+    await connectorWith(api.fetch).refreshIdentity!(c);
+    expect(api.calls[0]!.url.pathname).toBe('/login/oauth/access_token');
+    expect(c.saved).toHaveLength(1);
+  });
+});
+
 describe('github webhooks', () => {
   const req = (
     event: string,
@@ -470,6 +513,23 @@ describe('github webhooks', () => {
     ]);
   });
 
+  it('flags installation_repositories events for a route key refresh', () => {
+    const body = {
+      action: 'added',
+      installation: { id: 7001 },
+      repositories_added: [{ id: 99, full_name: 'acme/new' }],
+      sender: { login: 'alexkim', id: 1001 },
+    };
+    const r = verifyGithubWebhook(
+      req('installation_repositories', body, undefined, 'd-10'),
+      'whsec',
+    );
+    expect(r.ok && r.events.map((e) => e.payload.refreshRouteKeys)).toEqual([true, true]);
+    // Content events do not.
+    const issue = verifyGithubWebhook(req('issues', f('webhook-issues-opened.json')), 'whsec');
+    expect(issue.ok && issue.events[0]!.payload.refreshRouteKeys).toBeUndefined();
+  });
+
   it('ignores ping and unrelated events', () => {
     expect(verifyGithubWebhook(req('ping', f('webhook-ping.json')), 'whsec')).toEqual({
       ok: true,
@@ -545,5 +605,17 @@ describe('github fake mode', () => {
       rawBody,
     });
     expect(r.ok && r.events[0]!.routeKey).toBe('7001');
+  });
+});
+
+describe('github fake flag', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('GITHUB_FAKE=1 turns on fake mode for GitHub alone', () => {
+    vi.stubEnv('CONNECTORS_FAKE', '');
+    vi.stubEnv('GITHUB_FAKE', '');
+    expect(githubConfigFromEnv().fake).toBe(false);
+    vi.stubEnv('GITHUB_FAKE', '1');
+    expect(githubConfigFromEnv().fake).toBe(true);
   });
 });

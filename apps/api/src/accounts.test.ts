@@ -4,7 +4,7 @@ import { accounts, auditLog, items, policies, secrets, subscriptions } from '@hu
 import { ConnectorCatalogRes } from '@hub/shared/api';
 import { createGmailConnector, FakeGmailStore } from '@hub/connectors/gmail';
 import { strictPersonalPolicies } from '@hub/policy';
-import { setup, rawAccess, rawRefresh, type TestEnv } from './test-helpers';
+import { setup, rawAccess, rawRefresh, type TestEnv, sitesWrite } from './test-helpers';
 
 let env: TestEnv;
 beforeAll(async () => {
@@ -577,6 +577,7 @@ describe('other providers: multi-identity consents', () => {
     expect(acme.routeKeys).toEqual(['cloud-acme']);
     expect(acme.meta).toEqual({
       siteUrl: 'https://acme.atlassian.example',
+      atlassianAccountId: 'aid-sam',
       grantedScopes: ['read:jira-work', 'read:confluence-content.all', 'offline_access'],
     });
     expect(JSON.stringify(body)).not.toMatch(/RAW|token_ref|tokenRef|grantedScopes/);
@@ -703,6 +704,41 @@ describe('other providers: multi-identity consents', () => {
     });
     expect(refused.statusCode).toBe(400);
     expect(refused.json().error).toBe('write_not_supported');
+  });
+
+  it('write consent must come from the same Atlassian person, not just the same site', async () => {
+    const { token } = await env.signIn('sites-person@example.com');
+    const res = await connectSites(token, 'fake-sites:lee:acme');
+    const acme = res.json().account as { id: string };
+    const state = await env.startConnect(token, `/accounts/${acme.id}/write-access`);
+    // Same site (cloud-acme), different Atlassian user.
+    const cb = await env.callback(state, 'fake-sites:mia:acme', 'atlassian');
+    const done = await env.complete(token, cb.pending!);
+    expect(done.json().error).toBe('account_mismatch');
+  });
+
+  it('refuses write access when the hub has no separate write app for the provider', async () => {
+    const { token, auth } = await env.signIn('no-write-app@example.com');
+    const res = await connectSites(token, 'fake-sites:lee:acme');
+    const acme = res.json().account as { id: string };
+    sitesWrite.configured = false;
+    try {
+      const r = await env.app.inject({
+        method: 'POST',
+        url: `/accounts/${acme.id}/write-access`,
+        headers: auth,
+        payload: {},
+      });
+      expect(r.statusCode).toBe(400);
+      expect(r.json().error).toBe('write_not_configured');
+      const cat = await env.app.inject({ url: '/connectors', headers: auth });
+      const info = cat
+        .json()
+        .connectors.find((c: { provider: string }) => c.provider === 'atlassian');
+      expect(info.writeActions).toEqual([]);
+    } finally {
+      sitesWrite.configured = true;
+    }
   });
 
   it('source toggles flip the subscription rows and enqueue a sync; ungranted sources stay off', async () => {

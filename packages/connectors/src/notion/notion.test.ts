@@ -1,15 +1,18 @@
-import { describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ReconnectRequiredError, RetryableError } from '../errors';
 import { fixture, MemoryStore, mockFetch } from '../lib/fake';
 import type { FetchFn } from '../lib/http';
 import type { ConnectorContext, WebhookRequest } from '../types';
 import { flattenPage } from './blocks';
 import { createNotionClient } from './client';
-import { NOTION_VERSION } from './config';
+import { NOTION_VERSION, notionConfigFromEnv } from './config';
 import { createNotionConnector, parseNotionCursor } from './connector';
 import { editFakePage, seedFakeNotion, type FakeNotionState } from './fake';
 import type { NotionRecord } from './normalize';
-import { notionSignature, verifyNotionWebhook } from './webhook';
+import { notionSignature, verifyNotionWebhook, writeVerificationTokenFile } from './webhook';
 
 const f = <T = unknown>(name: string) => fixture<T>(import.meta.url, name);
 
@@ -455,6 +458,7 @@ describe('notion webhooks', () => {
       { headers: {}, body, rawBody: JSON.stringify(body) },
       {
         key: undefined,
+        production: false,
         onVerificationToken: (t) => void got.push(t),
         log: (m, fields) => logs.push(m + JSON.stringify(fields ?? {})),
       },
@@ -463,6 +467,79 @@ describe('notion webhooks', () => {
     expect(got).toEqual([body.verification_token]);
     expect(logs.join('\n')).toContain('NOTION_WEBHOOK_VERIFICATION_TOKEN');
     expect(logs.join('\n')).not.toContain(body.verification_token);
+  });
+
+  it('rejects a handshake whose token differs from the configured one', async () => {
+    const body = f<{ verification_token: string }>('webhook-verification.json');
+    const req = { headers: {}, body, rawBody: JSON.stringify(body) };
+    const got: string[] = [];
+    const logs: string[] = [];
+    const r = verifyNotionWebhook(req, {
+      key: 'secret_key',
+      configuredToken: 'secret_key',
+      onVerificationToken: (t) => void got.push(t),
+      log: (m, fields) => logs.push(m + JSON.stringify(fields ?? {})),
+    });
+    expect(r.ok).toBe(false);
+    expect(got).toEqual([]);
+    expect(logs.join('\n')).not.toContain(body.verification_token);
+
+    // Same through the connector (NOTION_WEBHOOK_VERIFICATION_TOKEN = secret_key).
+    const sink = vi.fn();
+    const c = connectorWith(notionApi().fetch, { onVerificationToken: sink, log: () => {} });
+    expect((await c.verifyWebhook(req)).ok).toBe(false);
+    const same = { verification_token: 'secret_key' };
+    expect(
+      await c.verifyWebhook({ headers: {}, body: same, rawBody: JSON.stringify(same) }),
+    ).toMatchObject({ ok: true, events: [] });
+    expect(sink).not.toHaveBeenCalled();
+  });
+
+  it('never saves a handshake token in production, only logs a hint', () => {
+    const body = f<{ verification_token: string }>('webhook-verification.json');
+    const sink = vi.fn();
+    const logs: string[] = [];
+    const r = verifyNotionWebhook(
+      { headers: {}, body, rawBody: JSON.stringify(body) },
+      {
+        key: undefined,
+        production: true,
+        onVerificationToken: sink,
+        log: (m, fields) => logs.push(m + JSON.stringify(fields ?? {})),
+      },
+    );
+    expect(r).toEqual({ ok: true, events: [], reply: { status: 200, body: { ok: true } } });
+    expect(sink).not.toHaveBeenCalled();
+    expect(logs.join('\n')).toContain('NOTION_WEBHOOK_VERIFICATION_TOKEN');
+    expect(logs.join('\n')).not.toContain(body.verification_token);
+  });
+
+  it('creates the token file once (0600) and never overwrites it', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'notion-verify-'));
+    try {
+      const file = path.join(dir, 'sub', 'token');
+      expect(writeVerificationTokenFile('secret_first', file)).toBe(file);
+      expect(statSync(file).mode & 0o777).toBe(0o600);
+      expect(writeVerificationTokenFile('secret_forged', file)).toBeNull();
+      expect(readFileSync(file, 'utf8')).toBe('secret_first\n');
+
+      const logs: string[] = [];
+      const body = { verification_token: 'secret_forged_again' };
+      const r = verifyNotionWebhook(
+        { headers: {}, body, rawBody: JSON.stringify(body) },
+        {
+          key: undefined,
+          production: false,
+          onVerificationToken: (t) => writeVerificationTokenFile(t, file),
+          log: (m) => logs.push(m),
+        },
+      );
+      expect(r.ok).toBe(true);
+      expect(readFileSync(file, 'utf8')).toBe('secret_first\n');
+      expect(logs.join('\n')).toContain('already exists');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('is exposed through the connector with the configured token', async () => {
@@ -535,5 +612,17 @@ describe('notion fake mode', () => {
       providerEventId: 'ev-1',
       routeKey: 'ws-acme-0001',
     });
+  });
+});
+
+describe('notion fake flag', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('NOTION_FAKE=1 turns on fake mode for Notion alone', () => {
+    vi.stubEnv('CONNECTORS_FAKE', '');
+    vi.stubEnv('NOTION_FAKE', '');
+    expect(notionConfigFromEnv().fake).toBe(false);
+    vi.stubEnv('NOTION_FAKE', '1');
+    expect(notionConfigFromEnv().fake).toBe(true);
   });
 });

@@ -85,16 +85,16 @@ export async function resolveTargets(
     .from(accounts)
     .where(and(eq(accounts.provider, provider), by, live))
     .orderBy(...order);
-  if (!ev.subscriptionSecret || !ev.source) {
-    return rows.map((r) => ({ accountId: r.id, ...(ev.source ? { source: ev.source } : {}) }));
-  }
-  // A secret to check: find each account's subscription for the event's source.
+  if (!ev.source) return rows.map((r) => ({ accountId: r.id }));
+  // The event names a source: load each account's row for it, so a disabled source is
+  // skipped and a source that registered a secret refuses events without the right one.
   const out: WebhookTarget[] = [];
   for (const r of rows) {
     const [sub] = await db
       .select()
       .from(subscriptions)
       .where(and(eq(subscriptions.accountId, r.id), eq(subscriptions.kind, ev.source)));
+    if (sub && !sub.enabled) continue;
     out.push({ accountId: r.id, source: ev.source, ...(sub ? { sub } : {}) });
   }
   return out;
@@ -150,8 +150,16 @@ export function buildGateway(deps: GatewayDeps): FastifyInstance {
     ...(typeof deps.logger === 'object'
       ? { loggerInstance: deps.logger }
       : { logger: deps.logger ?? false }),
-    // Default request logs carry method, url and status only (no headers, no body).
+    // Default request logs include the full URL, and some providers carry a shared secret
+    // in the query string (Atlassian `?t=`). Log our own line: route pattern and status only.
+    disableRequestLogging: true,
     bodyLimit: deps.bodyLimit ?? 1024 * 1024,
+  });
+  app.addHook('onResponse', async (req, reply) => {
+    req.log.info(
+      { method: req.method, route: req.routeOptions.url ?? 'unmatched', status: reply.statusCode },
+      'request',
+    );
   });
 
   app.removeContentTypeParser('application/json');

@@ -138,13 +138,27 @@ export function adfMentions(doc: unknown, accountId: string | null | undefined):
   return Array.isArray(n.content) && n.content.some((c) => adfMentions(c, accountId));
 }
 
+/**
+ * Storage-format markup with the parts that are literal text, not markup, removed: CDATA
+ * sections, the bodies of `ac:plain-text-body` (code and noformat macros) and XML comments.
+ * A `<ri:user …>` typed into a code block is text, and must not count as a mention.
+ */
+function storageMarkupOnly(storage: string): string {
+  // CDATA first: it cannot contain `]]>`, but it can contain a fake `</ac:plain-text-body>`.
+  return storage
+    .replace(/<!\[CDATA\[[\s\S]*?(?:\]\]>|$)/g, '')
+    .replace(/<!--[\s\S]*?(?:-->|$)/g, '')
+    .replace(/<ac:plain-text-body\b[^>]*>[\s\S]*?(?:<\/ac:plain-text-body\s*>|$)/gi, '');
+}
+
 /** Whether Confluence storage format has a user link (`<ri:user ri:account-id>`) to this account. */
 export function storageMentions(
   storage: string | null | undefined,
   accountId: string | null | undefined,
 ): boolean {
   if (!storage || !accountId) return false;
-  for (const m of storage.matchAll(/<ri:user\b[^>]*\bri:account-id="([^"]+)"/gi)) {
+  const markup = storageMarkupOnly(storage);
+  for (const m of markup.matchAll(/<ri:user\b[^>]*\bri:account-id="([^"]+)"/gi)) {
     if (m[1] === accountId) return true;
   }
   return false;

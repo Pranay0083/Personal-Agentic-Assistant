@@ -153,6 +153,9 @@ async function defaultNickname(db: Db, userId: string, provider: string, base: s
   for (let n = 2; ; n++) if (!taken.has(`${base} ${n}`)) return `${base} ${n}`;
 }
 
+/** Meta field identifying the person, for providers whose external id is a shared resource. */
+const PERSON_KEY: Partial<Record<string, string>> = { atlassian: 'atlassianAccountId' };
+
 function isPersonalAddress(provider: string, externalId: string): boolean {
   const domains = PERSONAL_DOMAINS[provider];
   if (!domains) return false;
@@ -327,6 +330,14 @@ export function accountRoutes(app: FastifyInstance, ctx: Ctx) {
     const connector = lookupConnector(ctx, provider);
     if (connector.info.writeActions.length === 0) {
       throw new HttpError(400, 'write_not_supported', `${provider} has no write actions`);
+    }
+    if (connector.writeConfigured && !connector.writeConfigured()) {
+      // Without a separate write app, the consent would add write scopes to the read token.
+      throw new HttpError(
+        400,
+        'write_not_configured',
+        `${provider} needs a separate write app on this hub`,
+      );
     }
     const state = await signState(
       config,
@@ -702,9 +713,18 @@ async function storeWriteTokens(
     .where(and(eq(accounts.id, state.accountId), eq(accounts.userId, state.userId)));
   if (!account) return { error: 'account_not_found' };
   const target = account.externalId.toLowerCase();
-  if (!identitiesOf(ex).some((i) => i.externalId.trim().toLowerCase() === target)) {
+  const match = identitiesOf(ex).find((i) => i.externalId.trim().toLowerCase() === target);
+  if (!match) {
     // The user consented with a different identity than the one being upgraded.
     return { error: 'account_mismatch' };
+  }
+  // Some providers key accounts by a shared resource (an Atlassian site), not the person:
+  // the write consent must also come from the same person as the read consent.
+  const personKey = PERSON_KEY[account.provider];
+  if (personKey) {
+    const had = (account.meta as Record<string, unknown> | null)?.[personKey];
+    const got = match.meta?.[personKey];
+    if (typeof had !== 'string' || had !== got) return { error: 'account_mismatch' };
   }
   const value = JSON.stringify(ex.tokens);
   // Write access is granted to this account only, even if the consent covers others.

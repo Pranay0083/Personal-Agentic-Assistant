@@ -9,11 +9,15 @@ import type { VerifyResult, WebhookEvent, WebhookRequest } from '../types';
  * Notion integration webhooks (one subscription per integration, all workspaces).
  *
  * 1. Verification handshake: when the subscription is created Notion POSTs
- *    `{"verification_token":"secret_..."}` (unsigned). We answer 200 and hand the token
- *    to `onVerificationToken`, which by default writes it to
- *    `<repo>/.dev/notion-webhook-verification-token` (mode 0600) and logs only a hint and a
- *    short fingerprint, never the value. The operator pastes it into Notion's "Verify"
- *    dialog and into NOTION_WEBHOOK_VERIFICATION_TOKEN, then deletes the file.
+ *    `{"verification_token":"secret_..."}` (unsigned, so anyone can send one).
+ *    - NOTION_WEBHOOK_VERIFICATION_TOKEN set: a handshake with any other token is rejected.
+ *    - Otherwise we answer 200 and, outside production, hand the token to
+ *      `onVerificationToken`, which by default creates
+ *      `<repo>/.dev/notion-webhook-verification-token` (mode 0600) only if it does not exist
+ *      yet (never overwrites). In production nothing is written; we only log a hint.
+ *    Logs carry a hint and a short fingerprint, never the value. The operator pastes the
+ *    token into Notion's "Verify" dialog and into NOTION_WEBHOOK_VERIFICATION_TOKEN, then
+ *    deletes the file.
  * 2. Events: `X-Notion-Signature: sha256=<hex HMAC-SHA256(raw body, verification token)>`,
  *    compared in constant time. Payloads carry ids only (entity, workspace, authors).
  */
@@ -36,13 +40,22 @@ export type NotionWebhookLog = (msg: string, fields?: Record<string, unknown>) =
 export const DEFAULT_VERIFICATION_TOKEN_FILE = () =>
   path.join(path.dirname(defaultFakePath('notion')), 'notion-webhook-verification-token');
 
-/** Default handshake sink: a 0600 file next to the fake stores. Returns where it went. */
+/**
+ * Default handshake sink: a 0600 file next to the fake stores, created exclusively so a
+ * later (possibly forged) handshake can never replace it. Returns where it went, or null
+ * when the file already exists.
+ */
 export function writeVerificationTokenFile(
   token: string,
   file = DEFAULT_VERIFICATION_TOKEN_FILE(),
-) {
+): string | null {
   mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, `${token}\n`, { mode: 0o600 });
+  try {
+    writeFileSync(file, `${token}\n`, { mode: 0o600, flag: 'wx' });
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'EEXIST') return null;
+    throw e;
+  }
   chmodSync(file, 0o600);
   return file;
 }
@@ -54,8 +67,16 @@ export function notionSignature(key: string, rawBody: string): string {
 export type NotionVerifyOptions = {
   /** Verification token (signing key); undefined when not configured yet. */
   key: string | undefined;
-  onVerificationToken?: (token: string) => string | void;
+  /**
+   * NOTION_WEBHOOK_VERIFICATION_TOKEN, when set. Handshakes carrying a different token are
+   * rejected. (Not the fake-mode key: that one only signs fake events.)
+   */
+  configuredToken?: string | undefined;
+  /** Receives a new token outside production. Returns where it was saved, or null if not. */
+  onVerificationToken?: (token: string) => string | null | void;
   log?: NotionWebhookLog;
+  /** Defaults to NODE_ENV === 'production'. In production no token is ever written. */
+  production?: boolean;
 };
 
 const defaultLog: NotionWebhookLog = (msg, fields) =>
@@ -69,17 +90,41 @@ export function verifyNotionWebhook(req: WebhookRequest, opts: NotionVerifyOptio
   if (typeof body.verification_token === 'string' && body.type === undefined) {
     const token = body.verification_token;
     const fingerprint = sha256Hex(token).slice(0, 8);
-    if (opts.key && safeEqual(opts.key, token)) {
+    if (opts.configuredToken) {
+      if (!safeEqual(opts.configuredToken, token)) {
+        log('webhook verification request with a token other than the configured one; rejected', {
+          fingerprint,
+        });
+        return { ok: false, reason: 'verification token does not match the configured one' };
+      }
       log('webhook verification request for the configured token; nothing to do', {
         fingerprint,
       });
+      return { ok: true, events: [], reply: { status: 200, body: { ok: true } } };
+    }
+    const production = opts.production ?? process.env.NODE_ENV === 'production';
+    if (production) {
+      log(
+        'webhook verification request received; nothing is saved in production. Capture the ' +
+          'token with a non-production gateway (or resend it from Notion), set ' +
+          'NOTION_WEBHOOK_VERIFICATION_TOKEN to it and restart the gateway',
+        { fingerprint },
+      );
     } else {
       const where = (opts.onVerificationToken ?? writeVerificationTokenFile)(token);
-      log(
-        'webhook verification request received: paste the verification_token into the Notion ' +
-          'integration "Verify" dialog and set NOTION_WEBHOOK_VERIFICATION_TOKEN to it, then restart the gateway',
-        { fingerprint, ...(where ? { savedTo: where } : {}) },
-      );
+      if (where === null) {
+        log(
+          'webhook verification request received, but a saved token file already exists and ' +
+            'was not replaced; delete it to capture a new one',
+          { fingerprint },
+        );
+      } else {
+        log(
+          'webhook verification request received: paste the verification_token into the Notion ' +
+            'integration "Verify" dialog and set NOTION_WEBHOOK_VERIFICATION_TOKEN to it, then restart the gateway',
+          { fingerprint, ...(where ? { savedTo: where } : {}) },
+        );
+      }
     }
     return { ok: true, events: [], reply: { status: 200, body: { ok: true } } };
   }

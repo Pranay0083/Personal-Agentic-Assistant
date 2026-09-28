@@ -2,14 +2,14 @@ import { ConnectorError, MissingScopeError, ReconnectRequiredError } from '../er
 import { authorizeUrl, exchangeCode, toTokens, type TokenResponse } from '../lib/index';
 import type { AccessKind, ConnectorContext, ExchangeResult } from '../types';
 import {
-  IDENTITY_SCOPES,
   MSA_TENANT_ID,
   authorizeEndpoint,
   clientFor,
-  isWriteScope,
   normalizeScopes,
   scopesFor,
   tokenUrl,
+  writeConfigured,
+  writeScopesIn,
   type MicrosoftConfig,
 } from './config';
 import { graphFor, PROVIDER } from './graph';
@@ -19,6 +19,12 @@ export function msAuthUrl(
   cfg: MicrosoftConfig,
   o: { state: string; redirectUri: string; access: AccessKind; loginHint?: string },
 ): string {
+  if (o.access === 'write' && !writeConfigured(cfg)) {
+    throw new ConnectorError(
+      PROVIDER,
+      'write consent needs a separate Entra app (MS_WRITE_CLIENT_ID/SECRET)',
+    );
+  }
   const { clientId } = clientFor(cfg, o.access);
   return authorizeUrl(
     { authorizeUrl: authorizeEndpoint(cfg), clientId },
@@ -44,7 +50,7 @@ export function msAuthUrl(
 export function checkGrant(granted: string[], access: AccessKind, hasRefreshToken: boolean) {
   const has = (s: string) => granted.some((g) => g.toLowerCase() === s.toLowerCase());
   if (access === 'read') {
-    const writes = granted.filter((s) => !IDENTITY_SCOPES.has(s.toLowerCase()) && isWriteScope(s));
+    const writes = writeScopesIn(granted);
     if (writes.length) {
       // Usually a Mail.Send consent given earlier to the same app: Microsoft adds every
       // consented scope to the app's tokens. Configure MS_WRITE_CLIENT_ID to separate them.

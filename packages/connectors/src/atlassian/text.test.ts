@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { fixture } from '../lib/fake';
 import type { ConfluenceSearchPage, JiraSearchPage } from './api-types';
-import { adfToText, cap, storageToText, textToAdf } from './text';
+import { adfToText, cap, storageMentions, storageToText, textToAdf } from './text';
 
 describe('adfToText', () => {
   const page = fixture<JiraSearchPage>(import.meta.url, 'search-page-1.json');
@@ -125,5 +125,34 @@ describe('storageToText', () => {
   it('caps long text on a word boundary', () => {
     expect(cap('hello brave new world', 13)).toBe('hello brave…');
     expect(cap('short', 10)).toBe('short');
+  });
+});
+
+describe('storageMentions', () => {
+  const ME = '5b10ac8d82e05b22cc7d4ef5';
+  const link = `<ac:link><ri:user ri:account-id="${ME}" /></ac:link>`;
+
+  it('finds a real user link', () => {
+    expect(storageMentions(`<p>Hi ${link}, please review</p>`, ME)).toBe(true);
+    expect(storageMentions(`<p>Hi ${link}</p>`, 'someone-else')).toBe(false);
+    expect(storageMentions(null, ME)).toBe(false);
+  });
+
+  it('ignores a user link typed into a code macro (CDATA / plain-text-body)', () => {
+    const code =
+      '<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">xml</ac:parameter>' +
+      `<ac:plain-text-body><![CDATA[${link}]]></ac:plain-text-body></ac:structured-macro>`;
+    expect(storageMentions(`<p>Snippet:</p>${code}`, ME)).toBe(false);
+    // A fake closing tag inside the CDATA does not end the code block early.
+    const tricky =
+      '<ac:structured-macro ac:name="code"><ac:plain-text-body><![CDATA[x</ac:plain-text-body>' +
+      `${link}]]></ac:plain-text-body></ac:structured-macro>`;
+    expect(storageMentions(tricky, ME)).toBe(false);
+    // Non-CDATA plain-text body, unterminated CDATA and comments are text too.
+    expect(storageMentions(`<ac:plain-text-body>${link}</ac:plain-text-body>`, ME)).toBe(false);
+    expect(storageMentions(`<p>a</p><![CDATA[${link}`, ME)).toBe(false);
+    expect(storageMentions(`<!-- ${link} -->`, ME)).toBe(false);
+    // A real mention next to a code block still counts.
+    expect(storageMentions(`${code}<p>${link}</p>`, ME)).toBe(true);
   });
 });
