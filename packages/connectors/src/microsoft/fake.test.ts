@@ -76,8 +76,12 @@ describe('fake mode (CONNECTORS_FAKE=1)', () => {
     const recorded = store.read().subscriptions[sub.externalSubId!]!;
     expect(sha256Hex(recorded.clientState)).toBe(sub.meta!.secretHash);
 
+    // The first round reaches back a day (seeded recent mail may show up), never further.
     const init = await connector.fetchDelta(ctx);
-    expect(init.records).toEqual([]);
+    const dayAgo = Date.now() - 24 * 3600_000 - 60_000;
+    for (const r of init.records as { message: { receivedDateTime: string } }[]) {
+      expect(Date.parse(r.message.receivedDateTime)).toBeGreaterThanOrEqual(dayAgo);
+    }
     store.addMail(WORK, {
       from: 'dana@fabrikam.example',
       fromName: 'Dana',

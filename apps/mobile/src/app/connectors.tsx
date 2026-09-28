@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import type { Provider } from '@hub/shared';
 import { useServices } from '@/lib/hooks';
 import {
@@ -356,6 +357,38 @@ function ServiceGroup({
                         style={{ paddingHorizontal: 14 }}
                       />
                     )}
+                  </View>
+                ) : null}
+                {a.setup ? (
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 12,
+                      minHeight: HIT,
+                      paddingLeft: 36,
+                      paddingRight: 12,
+                      paddingBottom: 6,
+                    }}
+                  >
+                    <View style={{ flex: 1, gap: 1 }}>
+                      <Txt size={13} weight={500} color={colors.body}>
+                        {a.setup.label}
+                      </Txt>
+                      <Txt size={11} color={colors.secondary}>
+                        Nothing syncs until you pick repositories on GitHub.
+                      </Txt>
+                    </View>
+                    <Button
+                      label="Open GitHub"
+                      variant="tealOutline"
+                      size="sm"
+                      radius={10}
+                      textSize={13}
+                      accessibilityLabel={`${a.setup.label} for ${a.nickname}`}
+                      onPress={() => void WebBrowser.openBrowserAsync(a.setup!.url)}
+                      style={{ paddingHorizontal: 14 }}
+                    />
                   </View>
                 ) : null}
               </Row>

@@ -359,11 +359,19 @@ export class FakeMicrosoftStore {
 
   /** Newest live fake subscription of a user whose resource matches. */
   findSubscription(key: string, match: (resource: string) => boolean, now = Date.now()) {
+    return this.findSubscriptions(key, match, now)[0];
+  }
+
+  /**
+   * Every live subscription on the user's resource, newest first. Several Hub accounts (e.g.
+   * different Hub users in dev) can subscribe to the same mailbox, and Graph notifies each.
+   */
+  findSubscriptions(key: string, match: (resource: string) => boolean, now = Date.now()) {
     const s = this.read();
     return Object.values(s.subscriptions)
       .filter((x) => x.userKey === key.toLowerCase() && match(x.resource))
       .filter((x) => Date.parse(x.expirationDateTime) > now)
-      .sort((a, b) => b.expirationDateTime.localeCompare(a.expirationDateTime))[0];
+      .sort((a, b) => b.expirationDateTime.localeCompare(a.expirationDateTime));
   }
 }
 

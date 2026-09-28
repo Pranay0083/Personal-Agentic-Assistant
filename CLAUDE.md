@@ -69,7 +69,19 @@ Never import `@hub/server`, `@hub/db` or `@hub/policy` from `apps/mobile`; it ma
 
 Every provider folder in `packages/connectors/<provider>` exports:
 `connect` (OAuth), `subscribe`, `renew`, `verifyWebhook`, `fetchDelta`, `normalize`,
-and optionally `execute` (write actions, used only by the executor).
+and optionally `execute` (write actions, used only by the executor). The full contract is
+`packages/connectors/src/types.ts`:
+
+- An account has one or more **sources** (Google: mail, calendar, drive, chat). Each source
+  is one `subscriptions` row holding its push subscription and delta cursor.
+- Webhook events route by external id, route key or subscription id. Shared secrets are
+  stored only as `meta.secretHash` and checked by the gateway.
+- One consent can yield several accounts (Atlassian sites) sharing one grant.
+- Reply targets and trusted signals (`hub:mention`, `hub:assigned`, …) come from labels set
+  from provider metadata, never from message text.
+- Shared helpers (HTTP errors, OAuth2 refresh, HMAC, fake stores, `mockFetch`) live in
+  `packages/connectors/src/lib`. Provider app setup for each connector: `docs/CONNECTORS.md`.
+- Google is provider id `gmail` (a Google account covers Gmail, Calendar, Drive, Chat).
 
 ## Commands
 
@@ -80,6 +92,9 @@ and optionally `execute` (write actions, used only by the executor).
 - `pnpm --filter mobile start` — Expo
 - `pnpm test` / `pnpm lint` / `pnpm typecheck`
 - `pnpm acceptance` — end-to-end Phase 1–4 checks against a running `pnpm dev` in demo mode
+- `pnpm acceptance:connectors` — end-to-end checks for every connector (needs `CONNECTORS_FAKE=1`)
+- `pnpm --filter @hub/connectors fake:<google|microsoft|slack|atlassian|notion|github> …` —
+  deliver a change for that provider in demo mode as a signed webhook (see each script's header)
 - `pnpm --filter @hub/gateway fake:email --to <addr> --from "Name <addr>" --subject … --body …`
   — deliver a test email in demo mode (`GMAIL_FAKE=1`)
 

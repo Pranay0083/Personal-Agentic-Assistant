@@ -142,8 +142,9 @@ if (values.lifecycle) {
 
 if (values['no-push']) process.exit(0);
 
-const sub = store.findSubscription(key, matcher);
-if (!sub) {
+// Graph notifies every subscription on the resource, so the fake does too.
+const subs = store.findSubscriptions(key, matcher);
+if (subs.length === 0) {
   console.log(
     `no fake ${kind} subscription for ${user.upn} yet: connect the account and let a sync run, ` +
       'then retry. The change is stored and the next scheduled sync will pick it up.',
@@ -152,15 +153,13 @@ if (!sub) {
 }
 
 const body = {
-  value: [
-    {
-      subscriptionId: sub.id,
-      subscriptionExpirationDateTime: sub.expirationDateTime,
-      clientState: sub.clientState,
-      tenantId: user.tenantId,
-      ...notification,
-    },
-  ],
+  value: subs.map((sub) => ({
+    subscriptionId: sub.id,
+    subscriptionExpirationDateTime: sub.expirationDateTime,
+    clientState: sub.clientState,
+    tenantId: user.tenantId,
+    ...notification,
+  })),
 };
 const gateway = (
   values.gateway ??

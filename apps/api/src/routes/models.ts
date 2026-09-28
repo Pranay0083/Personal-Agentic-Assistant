@@ -1,7 +1,12 @@
 import { and, asc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { agentConfigs, providers } from '@hub/db';
-import { assertPublicBaseUrl, DEV_ONLY_PROVIDER_KINDS, ModelConfigError } from '@hub/models';
+import {
+  assertPublicBaseUrl,
+  DEV_ONLY_PROVIDER_KINDS,
+  ModelConfigError,
+  PROVIDER_MODEL_SUGGESTIONS,
+} from '@hub/models';
 import {
   AgentName,
   RECOMMENDED_MODELS,
@@ -67,6 +72,11 @@ export function modelRoutes(app: FastifyInstance, ctx: Ctx) {
 
     const options = [...HUB_OPTIONS];
     for (const p of providerList) {
+      for (const sug of PROVIDER_MODEL_SUGGESTIONS[p.kind] ?? []) {
+        if (!options.some((o) => o.providerKind === p.kind && o.model === sug.model)) {
+          options.push({ providerKind: p.kind, model: sug.model, label: sug.label });
+        }
+      }
       for (const model of modelsFromConfig(p.config)) {
         if (!options.some((o) => o.providerKind === p.kind && o.model === model)) {
           options.push({ providerKind: p.kind, model, label: `${model} (${p.label})` });

@@ -1,3 +1,4 @@
+import { FIRST_ROUND_LOOKBACK_MS } from './sync';
 import { describe, expect, it } from 'vitest';
 import { ConnectorError, ReconnectRequiredError, RetryableError } from '../errors';
 import type { MailCursor, TeamsCursor } from './cursor';
@@ -18,7 +19,7 @@ const storedCursor = JSON.stringify({
 } satisfies MailCursor);
 
 describe('mail delta', () => {
-  it('starts both folders at "now" on the first run without enumerating the mailbox', async () => {
+  it('starts both folders a day back on the first run without enumerating the mailbox', async () => {
     const { connector, calls } = replay({
       [INBOX]: fx('mail-delta-empty-inbox.json'),
       [SENT]: fx('mail-delta-empty-sent.json'),
@@ -30,7 +31,7 @@ describe('mail delta', () => {
     expect(cur.sent).toContain('FreshSentDeltaToken');
     const first = calls[0]!.url;
     expect(first.searchParams.get('$filter')).toBe(
-      `receivedDateTime ge ${new Date(NOW).toISOString()}`,
+      `receivedDateTime ge ${new Date(NOW - FIRST_ROUND_LOOKBACK_MS).toISOString()}`,
     );
     expect(first.searchParams.get('changeType')).toBe('created');
     expect(first.searchParams.get('$select')).toContain('conversationId');
@@ -203,13 +204,23 @@ describe('teams chats (watermark poll)', () => {
     '19:6b1f3c2a-9d4e-4f7a-8c1b-2e3d4f5a6b7c_9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d@unq.gbl.spaces',
   );
 
-  it('starts at now, then lists chats newer than the watermark and their new messages', async () => {
+  it('first round looks back a day, then lists chats newer than the watermark', async () => {
     const routes = {
       'GET /v1.0/me/chats': fx('chats.json'),
       [`GET /v1.0/chats/${CHAT1}/messages`]: fx('chat-messages.json'),
     };
+    // No cursor behaves like a watermark one day back, so nothing sent right after connect is lost.
     const first = await replay(routes).connector.fetchDelta(testCtx({ source: 'teams' }));
-    expect(first.records).toEqual([]);
+    const dayBack = await replay(routes).connector.fetchDelta(
+      testCtx({
+        source: 'teams',
+        cursor: JSON.stringify({
+          v: 1,
+          since: new Date(NOW - FIRST_ROUND_LOOKBACK_MS).toISOString(),
+        } satisfies TeamsCursor),
+      }),
+    );
+    expect(first.records).toEqual(dayBack.records);
     expect(JSON.parse(first.cursor!)).toEqual({ v: 1, since: new Date(NOW).toISOString() });
 
     const { connector, calls } = replay(routes);

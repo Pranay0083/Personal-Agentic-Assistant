@@ -25,8 +25,10 @@ import type {
  * Pulling changes per source.
  *
  * - mail: `/me/mailFolders/{inbox,sentitems}/messages/delta`, one delta link per folder.
- *   The first round is filtered to `receivedDateTime ge <now>` (Graph keeps the filter in
- *   the token), so connecting doesn't enumerate the mailbox: history comes from backfill.
+ *   The first round is filtered to `receivedDateTime ge <now - FIRST_ROUND_LOOKBACK>` (Graph
+ *   keeps the filter in the token), so connecting doesn't enumerate the mailbox (history
+ *   comes from backfill) yet mail that arrived between connect and the first round isn't
+ *   lost. Ingest upserts on the message id, so the overlap with backfill is harmless.
  * - calendar: `/me/calendarView/delta` over [now-1d, now+30d]. Graph fixes the window in
  *   the token, so the window is restarted (a fresh round) once it is a week old.
  * - teams: Graph has no delta for chat messages and no way to subscribe to all of a user's
@@ -105,6 +107,12 @@ export function qs(params: Record<string, string>): string {
 }
 
 const nowOf = (cfg: MicrosoftConfig) => cfg.now?.() ?? Date.now();
+/**
+ * How far back a source's very first delta round reaches. Messages that arrive after the
+ * account is connected but before its first round (e.g. the one whose notification
+ * triggered the first sync) would otherwise be skipped.
+ */
+export const FIRST_ROUND_LOOKBACK_MS = 24 * 3600_000;
 const iso = (ms: number) => new Date(ms).toISOString();
 const isPersonal = (ctx: ConnectorContext) => ctx.meta?.personal === true;
 
@@ -163,7 +171,7 @@ async function mailDelta({ cfg, graph, ctx }: SyncDeps): Promise<DeltaResult<MsR
   let hasMore = false;
   let expired = false;
   for (const folder of mailFolders(ctx)) {
-    const from = cur[folder] ?? mailStart(cfg, folder, nowOf(cfg));
+    const from = cur[folder] ?? mailStart(cfg, folder, nowOf(cfg) - FIRST_ROUND_LOOKBACK_MS);
     let round = await followDelta<GraphMessage>(graph, from, cfg.maxPages, prefer);
     if (round.expired) {
       expired = true;
@@ -376,11 +384,11 @@ async function teamsDelta(deps: SyncDeps): Promise<DeltaResult<MsRecord>> {
   if (isPersonal(ctx))
     return { records: [], cursor: ctx.cursor ?? encodeCursor({ v: 1, since: iso(now) }) };
   const cur = parseCursor<TeamsCursor>(ctx.cursor);
-  if (!cur) return { records: [], cursor: encodeCursor({ v: 1, since: iso(now) } as TeamsCursor) };
-  const sinceMs = Date.parse(cur.since) - OVERLAP_MS;
-  const untilIso = cur.until ?? iso(now);
+  const since = cur?.since ?? iso(now - FIRST_ROUND_LOOKBACK_MS);
+  const sinceMs = Date.parse(since) - OVERLAP_MS;
+  const untilIso = cur?.until ?? iso(now);
   const untilMs = Date.parse(untilIso);
-  let link: string | undefined = cur.next ?? chatsFirstPage(cfg, 20);
+  let link: string | undefined = cur?.next ?? chatsFirstPage(cfg, 20);
   const records: MsRecord[] = [];
   for (let page = 0; link && page < cfg.maxPages; page++) {
     const r = await chatsPage(deps, link, sinceMs, untilMs);
@@ -388,7 +396,7 @@ async function teamsDelta(deps: SyncDeps): Promise<DeltaResult<MsRecord>> {
     link = r.next;
   }
   const next: TeamsCursor = link
-    ? { v: 1, since: cur.since, until: untilIso, next: link }
+    ? { v: 1, since, until: untilIso, next: link }
     : { v: 1, since: untilIso };
   return { records, cursor: encodeCursor(next), ...(link ? { hasMore: true } : {}) };
 }

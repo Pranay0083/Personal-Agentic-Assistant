@@ -119,66 +119,71 @@ async function post(url: string, init: RequestInit) {
   }
 }
 
+// Google notifies every open channel / subscription on a resource (several Hub accounts
+// can watch the same fake mailbox in dev), so the fake does too.
 async function pushChannel(source: 'calendar' | 'drive') {
-  const ch = store
+  const open = store
     .google(to)!
-    .channels.filter((c) => c.source === source && c.expiration > Date.now())
-    .sort((a, b) => b.expiration - a.expiration)[0];
-  if (!ch) {
+    .channels.filter((c) => c.source === source && c.expiration > Date.now());
+  if (open.length === 0) {
     console.warn(
       `no open ${source} channel for ${to} (connect the account with ${source} on first); ` +
         'the item arrives on the next scheduled sync.',
     );
     return;
   }
-  const url = values.gateway ? `${gatewayBase}/hooks/gmail/channel` : ch.address;
-  await post(url, {
-    headers: {
-      'x-goog-channel-id': ch.id,
-      'x-goog-channel-token': ch.token,
-      'x-goog-channel-expiration': new Date(ch.expiration).toUTCString(),
-      'x-goog-message-number': String(Date.now() * 10 + randomInt(10)),
-      'x-goog-resource-id': ch.resourceId,
-      'x-goog-resource-state': source === 'calendar' ? 'exists' : 'change',
-      'x-goog-resource-uri':
-        source === 'calendar'
-          ? 'https://www.googleapis.com/calendar/v3/calendars/primary/events?alt=json'
-          : 'https://www.googleapis.com/drive/v3/changes?alt=json',
-    },
-  });
+  for (const ch of open) {
+    const url = values.gateway ? `${gatewayBase}/hooks/gmail/channel` : ch.address;
+    await post(url, {
+      headers: {
+        'x-goog-channel-id': ch.id,
+        'x-goog-channel-token': ch.token,
+        'x-goog-channel-expiration': new Date(ch.expiration).toUTCString(),
+        'x-goog-message-number': String(Date.now() * 10 + randomInt(10)),
+        'x-goog-resource-id': ch.resourceId,
+        'x-goog-resource-state': source === 'calendar' ? 'exists' : 'change',
+        'x-goog-resource-uri':
+          source === 'calendar'
+            ? 'https://www.googleapis.com/calendar/v3/calendars/primary/events?alt=json'
+            : 'https://www.googleapis.com/drive/v3/changes?alt=json',
+      },
+    });
+  }
 }
 
 async function pushChatEvent(messageName: string, spaceName: string, createTime: string) {
-  const sub = store.google(to)!.eventSubscriptions.find((s) => s.state !== 'DELETED');
-  if (!sub) {
+  const subs = store.google(to)!.eventSubscriptions.filter((s) => s.state !== 'DELETED');
+  if (subs.length === 0) {
     console.warn(
       `no Workspace Events subscription for ${to} (connect the account with Chat on first); ` +
         'the message arrives on the next scheduled sync.',
     );
     return;
   }
-  const messageId = `${Date.now()}${randomInt(100_000, 999_999)}`;
-  const envelope = {
-    message: {
-      attributes: {
-        'ce-datacontenttype': 'application/json',
-        'ce-id': `${spaceName}/spaceEvents/${messageId}`,
-        'ce-source': `//workspaceevents.googleapis.com/${sub.name}`,
-        'ce-specversion': '1.0',
-        'ce-subject': `//chat.googleapis.com/${spaceName}`,
-        'ce-time': createTime,
-        'ce-type': 'google.workspace.chat.message.v1.created',
+  for (const sub of subs) {
+    const messageId = `${Date.now()}${randomInt(100_000, 999_999)}`;
+    const envelope = {
+      message: {
+        attributes: {
+          'ce-datacontenttype': 'application/json',
+          'ce-id': `${spaceName}/spaceEvents/${messageId}`,
+          'ce-source': `//workspaceevents.googleapis.com/${sub.name}`,
+          'ce-specversion': '1.0',
+          'ce-subject': `//chat.googleapis.com/${spaceName}`,
+          'ce-time': createTime,
+          'ce-type': 'google.workspace.chat.message.v1.created',
+        },
+        data: Buffer.from(JSON.stringify({ message: { name: messageName } })).toString('base64'),
+        messageId,
+        publishTime: new Date().toISOString(),
       },
-      data: Buffer.from(JSON.stringify({ message: { name: messageName } })).toString('base64'),
-      messageId,
-      publishTime: new Date().toISOString(),
-    },
-    subscription: 'projects/hub-fake/subscriptions/workspace-events-push',
-  };
-  await post(`${gatewayBase}/hooks/gmail/events`, {
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(envelope),
-  });
+      subscription: 'projects/hub-fake/subscriptions/workspace-events-push',
+    };
+    await post(`${gatewayBase}/hooks/gmail/events`, {
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(envelope),
+    });
+  }
 }
 
 if (kind === 'chat') {

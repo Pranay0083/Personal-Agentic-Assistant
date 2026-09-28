@@ -14,6 +14,11 @@ type FieldDef = {
   placeholder: string;
   /** Secret fields go in `secret` (encrypted server-side). Everything else is non-secret config. */
   secret?: boolean;
+  /**
+   * When several secret fields make up one credential (AWS access key + secret), each names
+   * its key and they are sent together as a JSON object.
+   */
+  secretKey?: string;
   optional?: boolean;
   keyboard?: 'url' | 'default';
 };
@@ -76,7 +81,20 @@ export const PROVIDERS: ProviderDef[] = [
     note: 'Claude and other models inside your AWS account and region.',
     fields: [
       { key: 'region', label: 'Region', placeholder: 'us-east-1' },
-      { key: 'roleArn', label: 'IAM role ARN or access key', placeholder: 'arn:aws:iam::…:role/…' },
+      {
+        key: 'accessKeyId',
+        label: 'Access key ID',
+        placeholder: 'AKIA…',
+        secret: true,
+        secretKey: 'accessKeyId',
+      },
+      {
+        key: 'secretAccessKey',
+        label: 'Secret access key',
+        placeholder: '••••••••',
+        secret: true,
+        secretKey: 'secretAccessKey',
+      },
     ],
   },
   {
@@ -88,6 +106,12 @@ export const PROVIDERS: ProviderDef[] = [
     fields: [
       { key: 'projectId', label: 'Project ID', placeholder: 'my-project' },
       { key: 'region', label: 'Region', placeholder: 'us-east5' },
+      {
+        key: 'serviceAccount',
+        label: 'Service account key (JSON)',
+        placeholder: '{"type":"service_account",…}',
+        secret: true,
+      },
     ],
   },
   {
@@ -156,12 +180,15 @@ export function useProviderForm(initial = 'bedrock') {
   const build = (): AddProvider => {
     const config: Record<string, string> = {};
     let secret: string | undefined;
+    const parts: Record<string, string> = {};
     for (const f of def.fields) {
       const v = (values[f.key] ?? '').trim();
       if (!v) continue;
-      if (f.secret) secret = v;
+      if (f.secret && f.secretKey) parts[f.secretKey] = v;
+      else if (f.secret) secret = v;
       else config[f.key] = v;
     }
+    if (Object.keys(parts).length > 0) secret = JSON.stringify(parts);
     return { kind: def.kind, label: def.name, config, secret };
   };
 

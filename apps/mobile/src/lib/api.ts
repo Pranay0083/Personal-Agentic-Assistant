@@ -265,7 +265,7 @@ const CompleteWithAccess: Parser<CompleteConnectT> = {
  * GitHub repo. Anything else in `labels` is dropped here.
  */
 const DISPLAY_REFS =
-  /^(gcal:(start|end):|mscal:(start|end):|slack:channel:|slack:thread:|jira:(key|status):|github:(repo|number|type):|gchat:space:)/;
+  /^(gcal:(start|end):|mscal:(start|end):|slack:channel(_name)?:|slack:thread:|jira:(key|status):|github:(repo|number|type):|gchat:space:|hub:)/;
 const LabeledItems: Parser<{ items: LabeledItemT[]; nextCursor: string | null }> = {
   parse(data) {
     const res = ItemsRes.parse(data);
@@ -273,10 +273,12 @@ const LabeledItems: Parser<{ items: LabeledItemT[]; nextCursor: string | null }>
     return {
       nextCursor: res.nextCursor,
       items: res.items.map((item, i) => {
+        // The hub sends a filtered `refs` list; raw `labels` is the fallback for older hubs.
         const r = raw[i] as { labels?: unknown } | undefined;
-        const labels = Array.isArray(r?.labels)
+        const legacy = Array.isArray(r?.labels)
           ? r.labels.filter((l): l is string => typeof l === 'string' && DISPLAY_REFS.test(l))
           : [];
+        const labels = [...new Set([...(item.refs ?? []), ...legacy])];
         return { ...item, labels };
       }),
     };

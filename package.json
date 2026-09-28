@@ -17,7 +17,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "pnpm -r --parallel typecheck",
-    "acceptance": "node scripts/acceptance.mjs"
+    "acceptance": "node scripts/acceptance.mjs",
+    "acceptance:connectors": "node scripts/acceptance-connectors.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
