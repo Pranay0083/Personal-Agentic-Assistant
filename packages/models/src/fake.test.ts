@@ -107,6 +107,19 @@ describe('FakeProvider', () => {
     ]);
   });
 
+  it("replies in the first person without echoing the sender's pronouns", async () => {
+    const { json } = await run(
+      'reply',
+      email(
+        'Meera Iyer <meera@acme.com>',
+        'Board pack',
+        'Could you send me the board pack by Wednesday?',
+      ),
+    );
+    expect(json.body).toContain("I'll send you the board pack by Wednesday");
+    expect(json.body).not.toMatch(/send me/);
+  });
+
   it('drops indirect objects and keeps own promises unattributed in the brief', async () => {
     const data = fenceUntrusted(
       JSON.stringify({

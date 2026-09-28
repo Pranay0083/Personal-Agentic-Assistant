@@ -57,6 +57,22 @@ export async function runExtractor(deps: AgentDeps, itemId: string): Promise<Age
   if (!read.allow) return { status: 'denied', reason: read.reason };
 
   const fromMe = isFromMe(ctx);
+  // A reply to a request that already produced a task ("Yes, I'll send it Wednesday")
+  // restates that task; extracting it again would duplicate it.
+  if (
+    fromMe &&
+    ctx.item.threadId &&
+    (await threadHasOpenTask(deps, userId, accountId, ctx.item.threadId))
+  ) {
+    await audit(db, {
+      userId,
+      principal: PRINCIPAL,
+      action: 'agent.extract.skipped',
+      target,
+      details: { reason: 'thread_has_open_task' },
+    });
+    return { status: 'skipped', reason: 'thread already has an open task' };
+  }
   const content = await itemContent(deps, ctx);
   await audit(db, {
     userId,
@@ -186,4 +202,26 @@ export async function runExtractor(deps: AgentDeps, itemId: string): Promise<Age
     await deps.publishLive(userId, { type: 'item.updated', itemId });
   }
   return { status: 'extracted', created: created.length };
+}
+
+async function threadHasOpenTask(
+  deps: { db: AgentDeps['db'] },
+  userId: string,
+  accountId: string,
+  threadId: string,
+): Promise<boolean> {
+  const [row] = await deps.db
+    .select({ id: tasks.id })
+    .from(tasks)
+    .innerJoin(items, eq(tasks.sourceItemId, items.id))
+    .where(
+      and(
+        eq(tasks.userId, userId),
+        eq(tasks.status, 'open'),
+        eq(items.accountId, accountId),
+        eq(items.threadId, threadId),
+      ),
+    )
+    .limit(1);
+  return !!row;
 }

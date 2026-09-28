@@ -252,6 +252,22 @@ describe('extractor', () => {
     expect(await db.select().from(tasks).where(eq(tasks.userId, userId))).toHaveLength(1);
   });
 
+  it("doesn't duplicate a task when the user's own reply restates it", async () => {
+    const request = await addEmail();
+    await runAgentJob(deps, { agent: 'extractor', itemId: request.id });
+    const reply = await addEmail({
+      labels: ['SENT'],
+      author: 'Alex',
+      authorAddress: 'alex@acme.com',
+      title: 'Re: Q3 deck',
+      body: "Yes, I'll send you the Q3 deck by Thursday.",
+    });
+    const out = await runAgentJob(deps, { agent: 'extractor', itemId: reply.id });
+    expect(out).toMatchObject({ status: 'skipped' });
+    expect(await db.select().from(tasks).where(eq(tasks.userId, userId))).toHaveLength(1);
+    expect(await auditActions()).toContain('agent.extract.skipped');
+  });
+
   it('respects task.create = never', async () => {
     const item = await addEmail();
     await db.insert(policies).values({

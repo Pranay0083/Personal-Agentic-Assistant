@@ -253,7 +253,7 @@ function fakeReply(fences: Fence[], ref: string | null) {
     const action = actionPhrase(req);
     const due = dueFor(req, item.body, ref);
     if (action) {
-      line = `Yes, I'll ${lowerFirst(action)}${due ? ` ${due.phrase}` : ''}.`;
+      line = `Yes, I'll ${flipPronouns(lowerFirst(action))}${due ? ` ${due.phrase}` : ''}.`;
       if (due) {
         topic = `${stripSubject(item.subject) || capitalize(objectOf(action))} timeline`;
       }
@@ -270,4 +270,16 @@ function fakeAnswer(fences: Fence[]): string {
     return `- ${stripSubject(it.subject) || it.body.split('\n')[0]!.slice(0, 80)}`;
   });
   return `Offline demo model. Based on ${fences.length} item(s) in your context:\n${lines.join('\n')}`;
+}
+
+/** The request is in the sender's voice ("send me my notes"); the reply is in ours. */
+function flipPronouns(s: string): string {
+  const map: Record<string, string> = {
+    me: 'you',
+    my: 'your',
+    us: 'you',
+    our: 'your',
+    mine: 'yours',
+  };
+  return s.replace(/\b(me|my|us|our|mine)\b/gi, (w) => map[w.toLowerCase()] ?? w);
 }
