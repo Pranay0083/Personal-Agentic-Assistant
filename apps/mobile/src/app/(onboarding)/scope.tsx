@@ -74,6 +74,7 @@ function ScopeForm({
   const [filters, setFilters] = useState(account.filters);
   const [days, setDays] = useState<Days>(account.backfillDays);
   const [applyAll, setApplyAll] = useState(false);
+  const [isPersonal, setIsPersonal] = useState(account.isPersonal);
 
   const isGoogle = account.provider === 'gmail';
   const otherGoogle = list.filter((a) => a.provider === 'gmail' && a.id !== account.id);
@@ -88,6 +89,7 @@ function ScopeForm({
         color,
         filters,
         backfillDays: days,
+        isPersonal,
       });
       if (skipGoogle && otherGoogle.length) await api.applySettingsToProvider(account.id);
     },
@@ -259,6 +261,21 @@ function ScopeForm({
           Imports in the background. You can keep going.
         </Txt>
       </View>
+
+      <Pressable
+        onPress={() => setIsPersonal(!isPersonal)}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: isPersonal }}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: HIT }}
+      >
+        <Checkbox checked={isPersonal} size={20} />
+        <View style={{ flex: 1, gap: 2 }}>
+          <Txt size={14}>This is a personal account</Txt>
+          <Txt size={12} color={colors.secondary}>
+            Gets the stricter rules if you keep them on in the next step.
+          </Txt>
+        </View>
+      </Pressable>
 
       {isGoogle && otherGoogle.length > 0 ? (
         <Pressable
