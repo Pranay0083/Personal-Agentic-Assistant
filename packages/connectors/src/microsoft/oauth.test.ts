@@ -181,9 +181,7 @@ describe('microsoft oauth', () => {
     expect(form.get('scope')).toContain('Mail.Read');
     expect(form.get('scope')).not.toContain('Mail.Send');
     expect(ctx.saved[0]).toMatchObject({ refreshToken: '0.AXkAfixture-refresh-rotated' });
-    expect(calls[1]!.headers.authorization).toBe(
-      'Bearer fixture-access-refreshed',
-    );
+    expect(calls[1]!.headers.authorization).toBe('Bearer fixture-access-refreshed');
   });
 
   it('maps a revoked refresh token to ReconnectRequiredError', async () => {
